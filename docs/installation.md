@@ -17,7 +17,7 @@ For CI automation (optional but recommended):
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/spec-kit-linear.git
+git clone https://github.com/tim-mcdonnell/spec-kit-linear.git
 cd spec-kit-linear
 ```
 

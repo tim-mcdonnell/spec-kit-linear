@@ -5,7 +5,7 @@ This guide shows how to iterate on Spec Kit Linear locally without publishing a 
 ## 1. Clone and Switch Branches
 
 ```bash
-git clone https://github.com/your-org/spec-kit-linear.git
+git clone https://github.com/tim-mcdonnell/spec-kit-linear.git
 cd spec-kit-linear
 # Work on a feature branch
 git checkout -b your-feature-branch
