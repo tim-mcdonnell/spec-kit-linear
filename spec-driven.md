@@ -65,42 +65,46 @@ Today, practicing SDD requires assembling existing tools and maintaining discipl
 - AI assistants for iterative specification development
 - Research agents for gathering technical context
 - Code generation tools for translating specifications to implementation
-- Version control systems adapted for specification-first workflows
-- Consistency checking through AI analysis of specification documents
+- Project management tools (Linear) for specification storage and task tracking
+- CI automation for triggering planning, task generation, and implementation
+- Version control systems for code artifacts
+
+With Linear integration, specifications become Linear Projects, planning artifacts become Issue comments, and tasks become Issues with blocking relations. This moves the entire SDD workflow into a single, integrated platform.
 
 The key is treating specifications as the source of truth, with code as the generated output that serves the specification rather than the other way around.
 
-## Streamlining SDD with Commands
+## Streamlining SDD with Linear Integration
 
-The SDD methodology is significantly enhanced through three powerful commands that automate the specification → planning → tasking workflow:
+The SDD methodology is significantly enhanced through commands that automate the specification, planning, and tasking workflow. With Linear integration, everything lives in your project management tool rather than scattered files.
 
 ### The `/speckit.specify` Command
 
-This command transforms a simple feature description (the user-prompt) into a complete, structured specification with automatic repository management:
+This command transforms a simple feature description into a complete, structured specification stored as a Linear Project:
 
-1. **Automatic Feature Numbering**: Scans existing specs to determine the next feature number (e.g., 001, 002, 003)
-2. **Branch Creation**: Generates a semantic branch name from your description and creates it automatically
-3. **Template-Based Generation**: Copies and customizes the feature specification template with your requirements
-4. **Directory Structure**: Creates the proper `specs/[branch-name]/` structure for all related documents
+1. **Project Creation**: Creates a Linear Project with your specification in the `content` field
+2. **Template-Based Generation**: Applies the specification template structure automatically
+3. **Quality Validation**: Checks for completeness and highlights areas needing clarification
+4. **Naming**: Generates a concise, descriptive project name from your description
 
 ### The `/speckit.plan` Command
 
-Once a feature specification exists, this command creates a comprehensive implementation plan:
+Once a feature specification exists, this command creates planning artifacts as Linear Issue comments:
 
-1. **Specification Analysis**: Reads and understands the feature requirements, user stories, and acceptance criteria
-2. **Constitutional Compliance**: Ensures alignment with project constitution and architectural principles
-3. **Technical Translation**: Converts business requirements into technical architecture and implementation details
-4. **Detailed Documentation**: Generates supporting documents for data models, API contracts, and test scenarios
-5. **Quickstart Validation**: Produces a quickstart guide capturing key validation scenarios
+1. **Plan Issue Creation**: Creates a "Plan: [Project Name]" Issue in Linear
+2. **Research Findings**: Posts research as a comment on the Plan Issue
+3. **Data Model**: Posts entity schemas as a comment
+4. **API Contracts**: Posts endpoint definitions as a comment
+5. **Constitutional Compliance**: Validates against project principles
+6. **CI Triggering**: In CI mode, triggered by adding the `ai:plan` label to a Project
 
 ### The `/speckit.tasks` Command
 
-After a plan is created, this command analyzes the plan and related design documents to generate an executable task list:
+After planning is complete, this command generates an executable task structure in Linear:
 
-1. **Inputs**: Reads `plan.md` (required) and, if present, `data-model.md`, `contracts/`, and `research.md`
-2. **Task Derivation**: Converts contracts, entities, and scenarios into specific tasks
-3. **Parallelization**: Marks independent tasks `[P]` and outlines safe parallel groups
-4. **Output**: Writes `tasks.md` in the feature directory, ready for execution by a Task agent
+1. **Milestones**: Creates Linear Milestones for each development phase
+2. **Issues**: Creates Linear Issues for each task with acceptance criteria
+3. **Blocking Relations**: Establishes dependencies via Linear's issue relations
+4. **CI Triggering**: In CI mode, triggered by adding the `ai:tasks` label to a Project
 
 ### Example: Building a Chat Feature
 
@@ -114,53 +118,65 @@ Here's how these commands transform the traditional development workflow:
 3. Set up project structure manually (30 minutes)
 4. Write technical specifications (3-4 hours)
 5. Create test plans (2 hours)
-Total: ~12 hours of documentation work
+6. Create tasks in project management tool (1 hour)
+Total: ~13 hours of documentation work
 ```
 
-**SDD with Commands Approach:**
+**SDD with Linear Approach:**
 
 ```bash
 # Step 1: Create the feature specification (5 minutes)
 /speckit.specify Real-time chat system with message history and user presence
 
 # This automatically:
-# - Creates branch "003-chat-system"
-# - Generates specs/003-chat-system/spec.md
-# - Populates it with structured requirements
+# - Creates a Linear Project "Chat System"
+# - Stores the full specification in the Project's content field
+# - Validates specification quality
 
-# Step 2: Generate implementation plan (5 minutes)
+# Step 2: Review in Linear, then add ai:plan label
+# CI automatically generates planning artifacts (5 minutes)
+
+# Or manually:
 /speckit.plan WebSocket for real-time messaging, PostgreSQL for history, Redis for presence
 
-# Step 3: Generate executable tasks (5 minutes)
+# This creates:
+# - Plan Issue "Plan: Chat System"
+# - Comment: Research findings
+# - Comment: Data model (Message, User schemas)
+# - Comment: API contracts (WebSocket events, REST endpoints)
+
+# Step 3: Add ai:tasks label to Project
+# CI automatically generates milestones and issues (5 minutes)
+
+# Or manually:
 /speckit.tasks
 
-# This automatically creates:
-# - specs/003-chat-system/plan.md
-# - specs/003-chat-system/research.md (WebSocket library comparisons)
-# - specs/003-chat-system/data-model.md (Message and User schemas)
-# - specs/003-chat-system/contracts/ (WebSocket events, REST endpoints)
-# - specs/003-chat-system/quickstart.md (Key validation scenarios)
-# - specs/003-chat-system/tasks.md (Task list derived from the plan)
+# This creates:
+# - Milestones: "1. Setup", "2. Foundational", "3. User Stories"
+# - Issues: Each task as a Linear Issue with acceptance criteria
+# - Relations: Blocking dependencies between issues
 ```
 
 In 15 minutes, you have:
 
-- A complete feature specification with user stories and acceptance criteria
-- A detailed implementation plan with technology choices and rationale
-- API contracts and data models ready for code generation
-- Comprehensive test scenarios for both automated and manual testing
-- All documents properly versioned in a feature branch
+- A complete feature specification as a Linear Project
+- Planning artifacts as comments on the Plan Issue
+- Milestones representing development phases
+- Issues with acceptance criteria and blocking relations
+- Everything visible in your Linear workspace
 
-### The Power of Structured Automation
+### The Power of Linear Integration
 
 These commands don't just save time—they enforce consistency and completeness:
 
 1. **No Forgotten Details**: Templates ensure every aspect is considered, from non-functional requirements to error handling
-2. **Traceable Decisions**: Every technical choice links back to specific requirements
-3. **Living Documentation**: Specifications stay in sync with code because they generate it
+2. **Traceable Decisions**: Every technical choice links back to specific requirements via Linear's structure
+3. **Living Documentation**: Specifications in Linear Projects stay visible and accessible to the whole team
 4. **Rapid Iteration**: Change requirements and regenerate plans in minutes, not days
+5. **Native Dependencies**: Linear's blocking relations enforce workflow order automatically
+6. **CI Automation**: Label-based triggers remove manual orchestration
 
-The commands embody SDD principles by treating specifications as executable artifacts rather than static documents. They transform the specification process from a necessary evil into the driving force of development.
+The commands embody SDD principles by treating specifications as executable artifacts rather than static documents. They transform the specification process from a necessary evil into the driving force of development, with Linear as the single source of truth.
 
 ### Template-Driven Quality: How Structure Constrains LLMs for Better Outcomes
 
@@ -225,28 +241,22 @@ These gates prevent over-engineering by making the LLM explicitly justify any co
 
 #### 5. **Hierarchical Detail Management**
 
-The templates enforce proper information architecture:
+The templates enforce proper information architecture. Planning artifacts are posted as separate comments on the Plan Issue (Research, Data Model, API Contracts), keeping each artifact focused and navigable.
 
-```text
-**IMPORTANT**: This implementation plan should remain high-level and readable.
-Any code samples, detailed algorithms, or extensive technical specifications
-must be placed in the appropriate `implementation-details/` file
-```
-
-This prevents the common problem of specifications becoming unreadable code dumps. The LLM learns to maintain appropriate detail levels, extracting complexity to separate files while keeping the main document navigable.
+This prevents the common problem of specifications becoming unreadable code dumps. The LLM learns to maintain appropriate detail levels, posting detailed artifacts as distinct comments while keeping the main specification readable.
 
 #### 6. **Test-First Thinking**
 
-The implementation template enforces test-first development:
+The implementation template enforces test-first development through task ordering:
 
 ```text
-### File Creation Order
-1. Create `contracts/` with API specifications
-2. Create test files in order: contract → integration → e2e → unit
-3. Create source files to make tests pass
+### Implementation Order
+1. API contracts posted as comments on Plan Issue
+2. Test tasks created before implementation tasks
+3. Implementation tasks reference contracts and test requirements
 ```
 
-This ordering constraint ensures the LLM thinks about testability and contracts before implementation, leading to more robust and verifiable specifications.
+This ordering constraint, enforced via Linear's blocking relations, ensures the LLM thinks about testability and contracts before implementation, leading to more robust and verifiable specifications.
 
 #### 7. **Preventing Speculative Features**
 

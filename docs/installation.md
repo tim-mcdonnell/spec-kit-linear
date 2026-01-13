@@ -2,91 +2,213 @@
 
 ## Prerequisites
 
-- **Linux/macOS** (or Windows; PowerShell scripts now supported without WSL)
-- AI coding agent: [Claude Code](https://www.anthropic.com/claude-code), [GitHub Copilot](https://code.visualstudio.com/), [Codebuddy CLI](https://www.codebuddy.ai/cli) or [Gemini CLI](https://github.com/google-gemini/gemini-cli)
-- [uv](https://docs.astral.sh/uv/) for package management
-- [Python 3.11+](https://www.python.org/downloads/)
-- [Git](https://git-scm.com/downloads)
+- **Python 3.11+** - [Download](https://www.python.org/downloads/)
+- **uv** - Package management - [Install](https://docs.astral.sh/uv/)
+- **Git** - [Download](https://git-scm.com/downloads)
+- **Linear** - Workspace with API access
+- **Claude Code** - [Install](https://www.anthropic.com/claude-code) (or compatible AI assistant)
+
+For CI automation (optional but recommended):
+- **Woodpecker CI** - Self-hosted or cloud instance
+- **GitHub** - For PR integration
 
 ## Installation
 
-### Initialize a New Project
-
-The easiest way to get started is to initialize a new project:
+### 1. Clone the Repository
 
 ```bash
-uvx --from git+https://github.com/github/spec-kit.git specify init <PROJECT_NAME>
+git clone https://github.com/your-org/spec-kit-linear.git
+cd spec-kit-linear
 ```
 
-Or initialize in the current directory:
+### 2. Install Dependencies
 
 ```bash
-uvx --from git+https://github.com/github/spec-kit.git specify init .
-# or use the --here flag
-uvx --from git+https://github.com/github/spec-kit.git specify init --here
+uv sync
 ```
 
-### Specify AI Agent
+### 3. Set Up Linear API Token
 
-You can proactively specify your AI agent during initialization:
+Create a Linear API token:
+
+1. Go to Linear Settings > API > Personal API keys
+2. Click "Create key"
+3. Name it (e.g., "Spec Kit")
+4. Copy the token (starts with `lin_api_`)
+
+Set the environment variable:
 
 ```bash
-uvx --from git+https://github.com/github/spec-kit.git specify init <project_name> --ai claude
-uvx --from git+https://github.com/github/spec-kit.git specify init <project_name> --ai gemini
-uvx --from git+https://github.com/github/spec-kit.git specify init <project_name> --ai copilot
-uvx --from git+https://github.com/github/spec-kit.git specify init <project_name> --ai codebuddy
+# Add to your shell profile (~/.bashrc, ~/.zshrc, etc.)
+export LINEAR_TOKEN="lin_api_..."
 ```
 
-### Specify Script Type (Shell vs PowerShell)
+### 4. Configure linear-config.json
 
-All automation scripts now have both Bash (`.sh`) and PowerShell (`.ps1`) variants.
+The `linear-config.json` file maps your Linear team, labels, and workflow states to UUIDs. You can either:
 
-Auto behavior:
-
-- Windows default: `ps`
-- Other OS default: `sh`
-- Interactive mode: you'll be prompted unless you pass `--script`
-
-Force a specific script type:
+**Option A: Use the setup command (recommended)**
 
 ```bash
-uvx --from git+https://github.com/github/spec-kit.git specify init <project_name> --script sh
-uvx --from git+https://github.com/github/spec-kit.git specify init <project_name> --script ps
+uv run specify linear-setup
 ```
 
-### Ignore Agent Tools Check
+This interactively configures your Linear workspace.
 
-If you prefer to get the templates without checking for the right tools:
+**Option B: Manual configuration**
 
-```bash
-uvx --from git+https://github.com/github/spec-kit.git specify init <project_name> --ai claude --ignore-agent-tools
+1. Get your team ID from Linear's GraphQL explorer:
+
+```graphql
+query {
+  teams {
+    nodes {
+      id
+      name
+    }
+  }
+}
+```
+
+2. Create the required labels in Linear:
+
+| Label | Description |
+|-------|-------------|
+| `ai:plan` | Ready for planning phase |
+| `ai:tasks` | Ready for task generation |
+| `ai:ready` | Issue ready for implementation |
+| `ai:in-progress` | Agent currently working |
+| `ai:retry` | First failure, retrying |
+| `ai:blocked` | Needs human intervention |
+| `ai:needs-input` | Agent has questions |
+| `ai:review` | PR awaiting review |
+
+3. Get label and state IDs:
+
+```graphql
+query {
+  team(id: "your-team-id") {
+    labels {
+      nodes { id name }
+    }
+    states {
+      nodes { id name type }
+    }
+  }
+}
+```
+
+4. Update `linear-config.json`:
+
+```json
+{
+  "teamId": "your-team-uuid",
+  "labels": {
+    "ai:plan": "label-uuid-1",
+    "ai:tasks": "label-uuid-2",
+    "ai:ready": "label-uuid-3",
+    "ai:in-progress": "label-uuid-4",
+    "ai:retry": "label-uuid-5",
+    "ai:blocked": "label-uuid-6",
+    "ai:needs-input": "label-uuid-7",
+    "ai:review": "label-uuid-8"
+  },
+  "states": {
+    "backlog": "state-uuid-1",
+    "todo": "state-uuid-2",
+    "inProgress": "state-uuid-3",
+    "inReview": "state-uuid-4",
+    "done": "state-uuid-5",
+    "canceled": "state-uuid-6"
+  }
+}
 ```
 
 ## Verification
 
-After initialization, you should see the following commands available in your AI agent:
+### Test Linear Connection
 
-- `/speckit.specify` - Create specifications
-- `/speckit.plan` - Generate implementation plans  
-- `/speckit.tasks` - Break down into actionable tasks
+```bash
+curl -X POST https://api.linear.app/graphql \
+  -H "Authorization: $LINEAR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ viewer { id name } }"}'
+```
 
-The `.specify/scripts` directory will contain both `.sh` and `.ps1` scripts.
+You should see your Linear user information in the response.
+
+### Verify Commands
+
+With Claude Code, you should have access to:
+
+- `/speckit.constitution` - Create project governance principles
+- `/speckit.specify` - Create Linear Project with specification
+- `/speckit.clarify` - Clarify underspecified areas
+
+## CI Setup (Optional)
+
+For automated planning, task generation, and implementation, you need:
+
+### Environment Variables for CI
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LINEAR_TOKEN` | Yes | Linear API token |
+| `ANTHROPIC_API_KEY` | Yes | Claude API key for AI operations |
+| `GITHUB_TOKEN` | Yes | GitHub PAT for PR creation |
+
+### Woodpecker CI Secrets
+
+```bash
+woodpecker secret add --repository your-org/your-repo --name linear_token --value "lin_api_..."
+woodpecker secret add --repository your-org/your-repo --name anthropic_api_key --value "sk-ant-..."
+woodpecker secret add --repository your-org/your-repo --name github_token --value "ghp_..."
+```
+
+See [ci-integration.md](ci-integration.md) for complete CI setup instructions.
 
 ## Troubleshooting
 
-### Git Credential Manager on Linux
+### LINEAR_TOKEN not found
 
-If you're having issues with Git authentication on Linux, you can install Git Credential Manager:
+Ensure the environment variable is set and exported:
 
 ```bash
-#!/usr/bin/env bash
-set -e
-echo "Downloading Git Credential Manager v2.6.1..."
+echo $LINEAR_TOKEN
+# Should print your token
+```
+
+If empty, add to your shell profile and reload:
+
+```bash
+source ~/.zshrc  # or ~/.bashrc
+```
+
+### API authentication failed
+
+1. Verify your token is valid and not expired
+2. Check the token has correct permissions
+3. Test with curl command above
+
+### linear-config.json validation errors
+
+1. Verify all UUIDs are valid (format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+2. Ensure all required fields are populated
+3. Check that label and state names match your Linear workspace
+
+### Git Credential Manager on Linux
+
+If you're having issues with Git authentication on Linux:
+
+```bash
 wget https://github.com/git-ecosystem/git-credential-manager/releases/download/v2.6.1/gcm-linux_amd64.2.6.1.deb
-echo "Installing Git Credential Manager..."
 sudo dpkg -i gcm-linux_amd64.2.6.1.deb
-echo "Configuring Git to use GCM..."
 git config --global credential.helper manager
-echo "Cleaning up..."
 rm gcm-linux_amd64.2.6.1.deb
 ```
+
+## Next Steps
+
+- [Quick Start Guide](quickstart.md) - Complete walkthrough
+- [CI Integration](ci-integration.md) - Set up automated workflows
+- [Webhook Setup](webhook-setup.md) - Configure Linear webhooks

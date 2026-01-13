@@ -1,37 +1,19 @@
 # Local Development Guide
 
-This guide shows how to iterate on the `specify` CLI locally without publishing a release or committing to `main` first.
-
-> Scripts now have both Bash (`.sh`) and PowerShell (`.ps1`) variants. The CLI auto-selects based on OS unless you pass `--script sh|ps`.
+This guide shows how to iterate on Spec Kit Linear locally without publishing a release or committing to `main` first.
 
 ## 1. Clone and Switch Branches
 
 ```bash
-git clone https://github.com/github/spec-kit.git
-cd spec-kit
+git clone https://github.com/your-org/spec-kit-linear.git
+cd spec-kit-linear
 # Work on a feature branch
 git checkout -b your-feature-branch
 ```
 
-## 2. Run the CLI Directly (Fastest Feedback)
+## 2. Set Up the Development Environment
 
-You can execute the CLI via the module entrypoint without installing anything:
-
-```bash
-# From repo root
-python -m src.specify_cli --help
-python -m src.specify_cli init demo-project --ai claude --ignore-agent-tools --script sh
-```
-
-If you prefer invoking the script file style (uses shebang):
-
-```bash
-python src/specify_cli/__init__.py init demo-project --script ps
-```
-
-## 3. Use Editable Install (Isolated Environment)
-
-Create an isolated environment using `uv` so dependencies resolve exactly like end users get them:
+Create an isolated environment using `uv`:
 
 ```bash
 # Create & activate virtual env (uv auto-manages .venv)
@@ -40,73 +22,130 @@ source .venv/bin/activate  # or on Windows PowerShell: .venv\Scripts\Activate.ps
 
 # Install project in editable mode
 uv pip install -e .
-
-# Now 'specify' entrypoint is available
-specify --help
 ```
 
 Re-running after code edits requires no reinstall because of editable mode.
 
-## 4. Invoke with uvx Directly From Git (Current Branch)
+## 3. Configure Linear API Access
 
-`uvx` can run from a local path (or a Git ref) to simulate user flows:
-
-```bash
-uvx --from . specify init demo-uvx --ai copilot --ignore-agent-tools --script sh
-```
-
-You can also point uvx at a specific branch without merging:
+Set your Linear API token for local development:
 
 ```bash
-# Push your working branch first
-git push origin your-feature-branch
-uvx --from git+https://github.com/github/spec-kit.git@your-feature-branch specify init demo-branch-test --script ps
+export LINEAR_TOKEN="lin_api_..."
 ```
 
-### 4a. Absolute Path uvx (Run From Anywhere)
+You can also create a `.env` file (not committed):
 
-If you're in another directory, use an absolute path instead of `.`:
+```
+LINEAR_TOKEN=lin_api_...
+```
+
+## 4. Run the CLI Directly
+
+You can execute the CLI via the module entrypoint:
 
 ```bash
-uvx --from /mnt/c/GitHub/spec-kit specify --help
-uvx --from /mnt/c/GitHub/spec-kit specify init demo-anywhere --ai copilot --ignore-agent-tools --script sh
+# From repo root
+python -m src.specify_cli --help
+python -m src.specify_cli init demo-project --ai claude
 ```
 
-Set an environment variable for convenience:
+Or if you have installed in editable mode:
 
 ```bash
-export SPEC_KIT_SRC=/mnt/c/GitHub/spec-kit
-uvx --from "$SPEC_KIT_SRC" specify init demo-env --ai copilot --ignore-agent-tools --script ps
+specify --help
+specify init demo-project --ai claude
 ```
 
-(Optional) Define a shell function:
+## 5. Working with the Linear Client Library
+
+The `src/linear/` package provides the Python client for Linear's GraphQL API.
+
+### Quick Test
 
 ```bash
-specify-dev() { uvx --from /mnt/c/GitHub/spec-kit specify "$@"; }
-# Then
-specify-dev --help
+python -c "from linear import LinearClient; print('Import OK')"
 ```
 
-## 5. Testing Script Permission Logic
+### Interactive Testing
 
-After running an `init`, check that shell scripts are executable on POSIX systems:
+```python
+from linear import LinearClient, LinearQueries, LinearMutations
+
+# Initialize client (uses LINEAR_TOKEN env var)
+client = LinearClient()
+queries = LinearQueries(client)
+mutations = LinearMutations(client)
+
+# Test a query
+team = queries.get_team("your-team-id")
+print(f"Team: {team.name}")
+```
+
+## 6. Testing Template Commands
+
+The command templates in `templates/commands/` define the behavior of slash commands. To test changes:
+
+1. Edit the template file (e.g., `templates/commands/specify.md`)
+2. Use the template with your AI assistant (Claude Code, etc.)
+3. Verify the command creates/updates Linear entities correctly
+
+## 7. Testing CI Workflows Locally
+
+The `.woodpecker/` directory contains CI job definitions. To test locally:
 
 ```bash
-ls -l scripts | grep .sh
-# Expect owner execute bit (e.g. -rwxr-xr-x)
+# Set required environment variables
+export LINEAR_TOKEN="lin_api_..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GITHUB_TOKEN="ghp_..."
+
+# Simulate what a CI job would do
+# (This depends on your specific CI setup)
 ```
 
-On Windows you will instead use the `.ps1` scripts (no chmod needed).
+## 8. Validating linear-config.json
 
-## 6. Run Lint / Basic Checks (Add Your Own)
-
-Currently no enforced lint config is bundled, but you can quickly sanity check importability:
+Ensure your configuration file is valid:
 
 ```bash
-python -c "import specify_cli; print('Import OK')"
+python -c "import json; json.load(open('linear-config.json'))"
 ```
 
-## 7. Build a Wheel Locally (Optional)
+Check against the schema:
+
+```bash
+# If you have a JSON schema validator installed
+jsonschema -i linear-config.json linear-config.schema.json
+```
+
+## 9. Run Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src
+
+# Run specific test file
+pytest tests/test_linear_client.py
+```
+
+## 10. Lint and Format
+
+```bash
+# Format code
+ruff format src/
+
+# Check linting
+ruff check src/
+
+# Type checking (if configured)
+mypy src/
+```
+
+## 11. Build a Wheel Locally (Optional)
 
 Validate packaging before publishing:
 
@@ -115,61 +154,67 @@ uv build
 ls dist/
 ```
 
-Install the built artifact into a fresh throwaway environment if needed.
-
-## 8. Using a Temporary Workspace
-
-When testing `init --here` in a dirty directory, create a temp workspace:
-
-```bash
-mkdir /tmp/spec-test && cd /tmp/spec-test
-python -m src.specify_cli init --here --ai claude --ignore-agent-tools --script sh  # if repo copied here
-```
-
-Or copy only the modified CLI portion if you want a lighter sandbox.
-
-## 9. Debug Network / TLS Skips
-
-If you need to bypass TLS validation while experimenting:
-
-```bash
-specify check --skip-tls
-specify init demo --skip-tls --ai gemini --ignore-agent-tools --script ps
-```
-
-(Use only for local experimentation.)
-
-## 10. Rapid Edit Loop Summary
+## 12. Rapid Edit Loop Summary
 
 | Action | Command |
 |--------|---------|
 | Run CLI directly | `python -m src.specify_cli --help` |
 | Editable install | `uv pip install -e .` then `specify ...` |
-| Local uvx run (repo root) | `uvx --from . specify ...` |
-| Local uvx run (abs path) | `uvx --from /mnt/c/GitHub/spec-kit specify ...` |
-| Git branch uvx | `uvx --from git+URL@branch specify ...` |
+| Test Linear import | `python -c "from linear import LinearClient"` |
+| Run tests | `pytest` |
 | Build wheel | `uv build` |
 
-## 11. Cleaning Up
+## 13. Development Workflow
 
-Remove build artifacts / virtual env quickly:
+### For CLI Changes (`src/specify_cli/`)
+
+1. Make changes to `src/specify_cli/__init__.py`
+2. Test with `python -m src.specify_cli [command]`
+3. Verify behavior matches expected output
+4. Update version in `pyproject.toml` if releasing
+
+### For Linear Client Changes (`src/linear/`)
+
+1. Make changes to the relevant file (`client.py`, `queries.py`, `mutations.py`)
+2. Write or update tests in `tests/`
+3. Test interactively with a real Linear workspace
+4. Verify GraphQL queries/mutations work correctly
+
+### For Template Changes (`templates/commands/`)
+
+1. Edit the template markdown file
+2. Test with your AI assistant
+3. Verify Linear entities are created/updated correctly
+4. Check for edge cases (missing data, errors, etc.)
+
+### For CI Changes (`.woodpecker/`)
+
+1. Edit the workflow YAML file
+2. Test by triggering the workflow (add label, create webhook event)
+3. Check CI logs for errors
+4. Verify Linear state changes are correct
+
+## 14. Cleaning Up
+
+Remove build artifacts / virtual env:
 
 ```bash
 rm -rf .venv dist build *.egg-info
 ```
 
-## 12. Common Issues
+## 15. Common Issues
 
 | Symptom | Fix |
 |---------|-----|
-| `ModuleNotFoundError: typer` | Run `uv pip install -e .` |
-| Scripts not executable (Linux) | Re-run init or `chmod +x scripts/*.sh` |
-| Git step skipped | You passed `--no-git` or Git not installed |
-| Wrong script type downloaded | Pass `--script sh` or `--script ps` explicitly |
-| TLS errors on corporate network | Try `--skip-tls` (not for production) |
+| `ModuleNotFoundError: linear` | Run `uv pip install -e .` |
+| `LINEAR_TOKEN not set` | Export the env var or add to `.env` |
+| GraphQL errors | Check token permissions in Linear settings |
+| Import errors | Ensure you're in the virtual environment |
+| CI job not triggering | Check webhook configuration and label names |
 
-## 13. Next Steps
+## 16. Next Steps
 
-- Update docs and run through Quick Start using your modified CLI
-- Open a PR when satisfied
-- (Optional) Tag a release once changes land in `main`
+- Review the [AGENTS.md](../AGENTS.md) for workflow documentation
+- Check [ci-integration.md](ci-integration.md) for CI setup
+- See [webhook-setup.md](webhook-setup.md) for webhook configuration
+- Open a PR when satisfied with changes

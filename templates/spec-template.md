@@ -1,9 +1,12 @@
 # Feature Specification: [FEATURE NAME]
 
-**Feature Branch**: `[###-feature-name]`  
-**Created**: [DATE]  
-**Status**: Draft  
-**Input**: User description: "$ARGUMENTS"
+**Created**: [DATE]
+**Status**: Draft
+
+<!--
+  This specification is stored in a Linear Project's content field.
+  Use /speckit.specify to create the Project, or paste this content directly.
+-->
 
 ## User Scenarios & Testing *(mandatory)*
 

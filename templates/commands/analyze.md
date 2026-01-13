@@ -1,8 +1,12 @@
 ---
-description: Perform a non-destructive cross-artifact consistency and quality analysis across spec.md, plan.md, and tasks.md after task generation.
-scripts:
-  sh: scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
-  ps: scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks
+description: Perform a non-destructive cross-artifact consistency and quality analysis across the Linear Project spec, Plan Issue, and task Issues after task generation.
+handoffs:
+  - label: Update Specification
+    agent: speckit.specify
+    prompt: Update the specification to address the issues found
+  - label: Update Plan
+    agent: speckit.plan
+    prompt: Update the plan to address the issues found
 ---
 
 ## User Input
@@ -11,15 +15,15 @@ scripts:
 $ARGUMENTS
 ```
 
-You **MUST** consider the user input before proceeding (if not empty).
+You **MUST** consider the user input before proceeding (if not empty). The input should include the Project identifier.
 
 ## Goal
 
-Identify inconsistencies, duplications, ambiguities, and underspecified items across the three core artifacts (`spec.md`, `plan.md`, `tasks.md`) before implementation. This command MUST run only after `/speckit.tasks` has successfully produced a complete `tasks.md`.
+Identify inconsistencies, duplications, ambiguities, and underspecified items across the three core artifacts (Project spec, Plan Issue, task Issues) before implementation. This command MUST run only after `/speckit.tasks` has successfully created Milestones and Issues.
 
 ## Operating Constraints
 
-**STRICTLY READ-ONLY**: Do **not** modify any files. Output a structured analysis report. Offer an optional remediation plan (user must explicitly approve before any follow-up editing commands would be invoked manually).
+**STRICTLY READ-ONLY**: Do **not** modify any Linear artifacts. Output a structured analysis report. Offer an optional remediation plan (user must explicitly approve before any follow-up editing commands would be invoked manually).
 
 **Constitution Authority**: The project constitution (`/memory/constitution.md`) is **non-negotiable** within this analysis scope. Constitution conflicts are automatically CRITICAL and require adjustment of the spec, plan, or tasks—not dilution, reinterpretation, or silent ignoring of the principle. If a principle itself needs to change, that must occur in a separate, explicit constitution update outside `/speckit.analyze`.
 
@@ -27,20 +31,45 @@ Identify inconsistencies, duplications, ambiguities, and underspecified items ac
 
 ### 1. Initialize Analysis Context
 
-Run `{SCRIPT}` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
+Load the Linear Project and its associated artifacts:
 
-- SPEC = FEATURE_DIR/spec.md
-- PLAN = FEATURE_DIR/plan.md
-- TASKS = FEATURE_DIR/tasks.md
+```graphql
+query GetProjectForAnalysis($id: String!) {
+  project(id: $id) {
+    id
+    name
+    identifier
+    content
+    url
+    projectMilestones {
+      nodes { id name description sortOrder }
+    }
+    issues {
+      nodes {
+        id
+        identifier
+        title
+        description
+        state { name }
+        projectMilestone { id name }
+        priority
+        comments { nodes { id body createdAt } }
+      }
+    }
+  }
+}
+```
 
-Abort with an error message if any required file is missing (instruct the user to run missing prerequisite command).
-For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+- Parse Project ID from user input
+- Load `linear-config.json` for team/label configuration
+- Find the Plan Issue (title starts with "Plan:")
+- Abort with an error message if Project not found or Plan Issue is missing
 
 ### 2. Load Artifacts (Progressive Disclosure)
 
 Load only the minimal necessary context from each artifact:
 
-**From spec.md:**
+**From Project `content` field (spec):**
 
 - Overview/Context
 - Functional Requirements
@@ -48,20 +77,20 @@ Load only the minimal necessary context from each artifact:
 - User Stories
 - Edge Cases (if present)
 
-**From plan.md:**
+**From Plan Issue and its comments:**
 
 - Architecture/stack choices
 - Data Model references
 - Phases
 - Technical constraints
 
-**From tasks.md:**
+**From task Issues:**
 
-- Task IDs
-- Descriptions
-- Phase grouping
-- Parallel markers [P]
-- Referenced file paths
+- Issue IDs/identifiers
+- Titles and descriptions
+- Milestone grouping (phases)
+- Priority levels
+- Blocking relations
 
 **From constitution:**
 
@@ -73,7 +102,7 @@ Create internal representations (do not include raw artifacts in output):
 
 - **Requirements inventory**: Each functional + non-functional requirement with a stable key (derive slug based on imperative phrase; e.g., "User can upload file" → `user-can-upload-file`)
 - **User story/action inventory**: Discrete user actions with acceptance criteria
-- **Task coverage mapping**: Map each task to one or more requirements or stories (inference by keyword / explicit reference patterns like IDs or key phrases)
+- **Task coverage mapping**: Map each Issue to one or more requirements or stories (inference by keyword / explicit reference patterns like IDs or key phrases)
 - **Constitution rule set**: Extract principle names and MUST/SHOULD normative statements
 
 ### 4. Detection Passes (Token-Efficient Analysis)
@@ -94,7 +123,7 @@ Focus on high-signal findings. Limit to 50 findings total; aggregate remainder i
 
 - Requirements with verbs but missing object or measurable outcome
 - User stories missing acceptance criteria alignment
-- Tasks referencing files or components not defined in spec/plan
+- Issues referencing files or components not defined in spec/plan
 
 #### D. Constitution Alignment
 
@@ -103,15 +132,15 @@ Focus on high-signal findings. Limit to 50 findings total; aggregate remainder i
 
 #### E. Coverage Gaps
 
-- Requirements with zero associated tasks
-- Tasks with no mapped requirement/story
-- Non-functional requirements not reflected in tasks (e.g., performance, security)
+- Requirements with zero associated Issues
+- Issues with no mapped requirement/story
+- Non-functional requirements not reflected in Issues (e.g., performance, security)
 
 #### F. Inconsistency
 
-- Terminology drift (same concept named differently across files)
+- Terminology drift (same concept named differently across artifacts)
 - Data entities referenced in plan but absent in spec (or vice versa)
-- Task ordering contradictions (e.g., integration tasks before foundational setup tasks without dependency note)
+- Issue ordering/blocking contradictions (e.g., integration issues before foundational setup without dependency note)
 - Conflicting requirements (e.g., one requires Next.js while other specifies Vue)
 
 ### 5. Severity Assignment
@@ -125,33 +154,33 @@ Use this heuristic to prioritize findings:
 
 ### 6. Produce Compact Analysis Report
 
-Output a Markdown report (no file writes) with the following structure:
+Output a Markdown report with the following structure:
 
 ## Specification Analysis Report
 
 | ID | Category | Severity | Location(s) | Summary | Recommendation |
 |----|----------|----------|-------------|---------|----------------|
-| A1 | Duplication | HIGH | spec.md:L120-134 | Two similar requirements ... | Merge phrasing; keep clearer version |
+| A1 | Duplication | HIGH | Project spec §FR-001 | Two similar requirements ... | Merge phrasing; keep clearer version |
 
 (Add one row per finding; generate stable IDs prefixed by category initial.)
 
 **Coverage Summary Table:**
 
-| Requirement Key | Has Task? | Task IDs | Notes |
-|-----------------|-----------|----------|-------|
+| Requirement Key | Has Issue? | Issue IDs | Notes |
+|-----------------|------------|-----------|-------|
 
 **Constitution Alignment Issues:** (if any)
 
-**Unmapped Tasks:** (if any)
+**Unmapped Issues:** (if any)
 
 **Metrics:**
 
 - Total Requirements
-- Total Tasks
-- Coverage % (requirements with >=1 task)
+- Total Issues
+- Coverage % (requirements with >=1 Issue)
 - Ambiguity Count
 - Duplication Count
-- Critical Issues Count
+- Critical Findings Count
 
 ### 7. Provide Next Actions
 
@@ -159,7 +188,7 @@ At end of report, output a concise Next Actions block:
 
 - If CRITICAL issues exist: Recommend resolving before `/speckit.implement`
 - If only LOW/MEDIUM: User may proceed, but provide improvement suggestions
-- Provide explicit command suggestions: e.g., "Run /speckit.specify with refinement", "Run /speckit.plan to adjust architecture", "Manually edit tasks.md to add coverage for 'performance-metrics'"
+- Provide explicit command suggestions: e.g., "Run /speckit.specify to update the Project spec", "Run /speckit.plan to adjust architecture", "Create additional Issues to add coverage for 'performance-metrics'"
 
 ### 8. Offer Remediation
 
@@ -176,12 +205,52 @@ Ask the user: "Would you like me to suggest concrete remediation edits for the t
 
 ### Analysis Guidelines
 
-- **NEVER modify files** (this is read-only analysis)
+- **NEVER modify Linear artifacts** (this is read-only analysis)
 - **NEVER hallucinate missing sections** (if absent, report them accurately)
 - **Prioritize constitution violations** (these are always CRITICAL)
 - **Use examples over exhaustive rules** (cite specific instances, not generic patterns)
-- **Report zero issues gracefully** (emit success report with coverage statistics)
+- **Report zero findings gracefully** (emit success report with coverage statistics)
 
-## Context
+## Linear API Reference
 
-{ARGS}
+### Get Project with All Artifacts
+```graphql
+query GetProjectForAnalysis($id: String!) {
+  project(id: $id) {
+    id
+    name
+    identifier
+    content
+    url
+    projectMilestones {
+      nodes { id name description sortOrder }
+    }
+    issues {
+      nodes {
+        id
+        identifier
+        title
+        description
+        state { name }
+        projectMilestone { id name }
+        priority
+        labels { nodes { name } }
+        relations {
+          nodes {
+            type
+            relatedIssue { id identifier title }
+          }
+        }
+        comments { nodes { id body createdAt } }
+      }
+    }
+  }
+}
+```
+
+## Key Rules
+
+- All artifacts are in Linear (Project content, Plan Issue, task Issues)
+- Use Issue identifiers (e.g., TIM-001) for references, not file paths
+- Check blocking relations for dependency analysis
+- Check Milestones for phase grouping

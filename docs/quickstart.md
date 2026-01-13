@@ -1,164 +1,195 @@
 # Quick Start Guide
 
-This guide will help you get started with Spec-Driven Development using Spec Kit.
+This guide will help you get started with Spec-Driven Development using Spec Kit Linear, a Linear-native workflow for building software through specifications.
 
-> [!NOTE]
-> All automation scripts now provide both Bash (`.sh`) and PowerShell (`.ps1`) variants. The `specify` CLI auto-selects based on OS unless you pass `--script sh|ps`.
+## Overview
 
-## The 6-Step Process
+Spec Kit Linear integrates directly with Linear to manage your entire development workflow:
 
-> [!TIP]
-> **Context Awareness**: Spec Kit commands automatically detect the active feature based on your current Git branch (e.g., `001-feature-name`). To switch between different specifications, simply switch Git branches.
+- **Specifications** are stored as Linear Projects (in the `content` field)
+- **Planning artifacts** are posted as Issue comments
+- **Tasks** are Linear Issues organized into Milestones
+- **Workflow dependencies** are enforced through blocking relations
+- **CI automation** is triggered by Linear labels via Woodpecker CI
 
-### Step 1: Install Specify
+## Prerequisites
 
-**In your terminal**, run the `specify` CLI command to initialize your project:
+- [Linear](https://linear.app) workspace with API access
+- AI coding agent: [Claude Code](https://www.anthropic.com/claude-code) or similar
+- Woodpecker CI (for automated planning and implementation)
+- GitHub repository for code and Pull Requests
 
-```bash
-# Create a new project directory
-uvx --from git+https://github.com/github/spec-kit.git specify init <PROJECT_NAME>
+## The Workflow
 
-# OR initialize in the current directory
-uvx --from git+https://github.com/github/spec-kit.git specify init .
-```
+### Phase 1: Create the Specification (Interactive)
 
-Pick script type explicitly (optional):
-
-```bash
-uvx --from git+https://github.com/github/spec-kit.git specify init <PROJECT_NAME> --script ps  # Force PowerShell
-uvx --from git+https://github.com/github/spec-kit.git specify init <PROJECT_NAME> --script sh  # Force POSIX shell
-```
-
-### Step 2: Define Your Constitution
-
-**In your AI Agent's chat interface**, use the `/speckit.constitution` slash command to establish the core rules and principles for your project. You should provide your project's specific principles as arguments.
+**In your AI agent's terminal**, use the `/speckit.specify` command to describe what you want to build. Focus on the **what** and **why**, not the tech stack.
 
 ```markdown
-/speckit.constitution This project follows a "Library-First" approach. All features must be implemented as standalone libraries first. We use TDD strictly. We prefer functional programming patterns.
+/speckit.specify Build an application that helps me organize my photos in separate albums. Albums are grouped by date and can be reorganized by dragging and dropping. Within each album, photos are previewed in a tile-like interface.
 ```
 
-### Step 3: Create the Spec
+This creates a **Linear Project** with:
 
-**In the chat**, use the `/speckit.specify` slash command to describe what you want to build. Focus on the **what** and **why**, not the tech stack.
+- A generated project name (e.g., "Photo Album Organizer")
+- The full specification stored in the Project's `content` field
+- Quality validation against Spec-Driven Development criteria
+
+### Phase 2: Clarify Requirements (Interactive)
+
+**In the terminal**, use the `/speckit.clarify` command to identify and resolve ambiguities. Provide the Project identifier.
 
 ```markdown
-/speckit.specify Build an application that can help me organize my photos in separate photo albums. Albums are grouped by date and can be re-organized by dragging and dropping on the main page. Albums are never in other nested albums. Within each album, photos are previewed in a tile-like interface.
+/speckit.clarify TIM-P-001
 ```
 
-### Step 4: Refine the Spec
+The agent will:
 
-**In the chat**, use the `/speckit.clarify` slash command to identify and resolve ambiguities in your specification. You can provide specific focus areas as arguments.
+- Analyze the specification for gaps
+- Ask up to 5 targeted clarification questions
+- Update the Project content with your answers
 
-```bash
-/speckit.clarify Focus on security and performance requirements.
-```
+### Phase 3: Review in Linear
 
-### Step 5: Create a Technical Implementation Plan
+Open your Linear Project and review the specification. When you are satisfied:
 
-**In the chat**, use the `/speckit.plan` slash command to provide your tech stack and architecture choices.
+**Add the `ai:plan` label to the Project.**
 
-```markdown
-/speckit.plan The application uses Vite with minimal number of libraries. Use vanilla HTML, CSS, and JavaScript as much as possible. Images are not uploaded anywhere and metadata is stored in a local SQLite database.
-```
+This triggers the CI-automated planning phase.
 
-### Step 6: Break Down and Implement
+### Phase 4: Planning (CI-Triggered)
 
-**In the chat**, use the `/speckit.tasks` slash command to create an actionable task list.
+When the `ai:plan` label is added, Woodpecker CI automatically:
 
-```markdown
-/speckit.tasks
-```
+1. Creates a "Plan: [Project Name]" Issue
+2. Posts research findings as a comment
+3. Posts data model as a comment
+4. Posts API contracts as a comment
+5. Updates the Plan Issue with a summary
 
-Optionally, validate the plan with `/speckit.analyze`:
+Review the planning artifacts in Linear. When ready:
 
-```markdown
-/speckit.analyze
-```
+**Add the `ai:tasks` label to the Project.**
 
-Then, use the `/speckit.implement` slash command to execute the plan.
+### Phase 5: Task Generation (CI-Triggered)
 
-```markdown
-/speckit.implement
-```
+When the `ai:tasks` label is added, CI automatically:
+
+1. Creates Milestones for each phase
+2. Creates Issues for each task
+3. Sets up blocking relations between Issues
+4. Posts a summary on the Plan Issue
+
+Review the generated tasks in Linear. For each Issue you want implemented:
+
+**Add the `ai:ready` label to the Issue.**
+
+### Phase 6: Implementation (CI-Triggered)
+
+For each Issue with the `ai:ready` label, CI automatically:
+
+1. Checks that blocking Issues are complete
+2. Creates a feature branch
+3. Implements the task (code and tests)
+4. Creates a Pull Request with "Fixes TIM-XXX" reference
+5. Updates the Issue status to "In Review"
+
+### Phase 7: Review and Merge
+
+Review Pull Requests in GitHub:
+
+- **Approve and Merge**: Linear auto-closes the Issue
+- **Request Changes**: CI triggers a retry, agent addresses feedback
 
 ## Detailed Example: Building Taskify
 
-Here's a complete example of building a team productivity platform:
+Here is a complete example of building a team productivity platform.
 
-### Step 1: Define Constitution
-
-Initialize the project's constitution to set ground rules:
+### Step 1: Create the Specification
 
 ```markdown
-/speckit.constitution Taskify is a "Security-First" application. All user inputs must be validated. We use a microservices architecture. Code must be fully documented.
+/speckit.specify Develop Taskify, a team productivity platform. Users can create projects, add team members, assign tasks, comment, and move tasks between boards in Kanban style. For this initial phase, we have five predefined users (one product manager and four engineers) across three sample projects. Standard Kanban columns: To Do, In Progress, In Review, and Done. No login required for this MVP.
 ```
 
-### Step 2: Define Requirements with `/speckit.specify`
+The agent creates a Linear Project with the full specification.
 
-```text
-Develop Taskify, a team productivity platform. It should allow users to create projects, add team members,
-assign tasks, comment and move tasks between boards in Kanban style. In this initial phase for this feature,
-let's call it "Create Taskify," let's have multiple users but the users will be declared ahead of time, predefined.
-I want five users in two different categories, one product manager and four engineers. Let's create three
-different sample projects. Let's have the standard Kanban columns for the status of each task, such as "To Do,"
-"In Progress," "In Review," and "Done." There will be no login for this application as this is just the very
-first testing thing to ensure that our basic features are set up.
+### Step 2: Clarify Requirements
+
+```markdown
+/speckit.clarify TIM-P-001
 ```
 
-### Step 3: Refine the Specification
+Example clarification session:
 
-Use the `/speckit.clarify` command to interactively resolve any ambiguities in your specification. You can also provide specific details you want to ensure are included.
+```
+Q: How should task cards display assignee information?
+Recommended: Option B - Show avatar and name
+Reply with the option letter, "yes" to accept, or provide your own answer.
 
-```bash
-/speckit.clarify I want to clarify the task card details. For each task in the UI for a task card, you should be able to change the current status of the task between the different columns in the Kanban work board. You should be able to leave an unlimited number of comments for a particular card. You should be able to, from that task card, assign one of the valid users.
+> yes
+
+Q: Can users edit or delete comments made by others?
+Suggested: Users can only edit/delete their own comments
+Reply "yes" to accept, or provide your own answer.
+
+> yes
 ```
 
-You can continue to refine the spec with more details using `/speckit.clarify`:
+### Step 3: Add Labels to Trigger CI
 
-```bash
-/speckit.clarify When you first launch Taskify, it's going to give you a list of the five users to pick from. There will be no password required. When you click on a user, you go into the main view, which displays the list of projects. When you click on a project, you open the Kanban board for that project. You're going to see the columns. You'll be able to drag and drop cards back and forth between different columns. You will see any cards that are assigned to you, the currently logged in user, in a different color from all the other ones, so you can quickly see yours. You can edit any comments that you make, but you can't edit comments that other people made. You can delete any comments that you made, but you can't delete comments anybody else made.
-```
+In Linear:
 
-### Step 4: Validate the Spec
+1. Add `ai:plan` label to the Project
+2. Wait for Plan Issue to be created and populated
+3. Review the planning artifacts
+4. Add `ai:tasks` label to the Project
+5. Review the generated Milestones and Issues
+6. Add `ai:ready` label to Issues you want implemented
 
-Validate the specification checklist using the `/speckit.checklist` command:
+### Step 4: Review Pull Requests
 
-```bash
-/speckit.checklist
-```
+As the agent implements each Issue, Pull Requests appear in GitHub. Review, request changes if needed, and merge when satisfied.
 
-### Step 5: Generate Technical Plan with `/speckit.plan`
+## Label Reference
 
-Be specific about your tech stack and technical requirements:
+| Label | Applied By | Meaning |
+|-------|------------|---------|
+| `ai:plan` | Human | Project ready for planning phase |
+| `ai:tasks` | Human | Plan approved, generate tasks |
+| `ai:ready` | Human | Issue ready to be implemented |
+| `ai:in-progress` | Agent | Currently working on issue |
+| `ai:retry` | Agent | First failure, will retry once |
+| `ai:blocked` | Agent | Needs human intervention |
+| `ai:needs-input` | Agent | Agent has specific questions |
+| `ai:review` | Agent | PR created, awaiting review |
 
-```bash
-/speckit.plan We are going to generate this using .NET Aspire, using Postgres as the database. The frontend should use Blazor server with drag-and-drop task boards, real-time updates. There should be a REST API created with a projects API, tasks API, and a notifications API.
-```
+## Command Reference
 
-### Step 6: Validate and Implement
+### Interactive Commands (Terminal)
 
-Have your AI agent audit the implementation plan using `/speckit.analyze`:
+| Command | Description |
+|---------|-------------|
+| `/speckit.specify` | Create a Linear Project with the specification |
+| `/speckit.clarify` | Clarify requirements and update Project content |
 
-```bash
-/speckit.analyze
-```
+### CI-Triggered Commands
 
-Finally, implement the solution:
-
-```bash
-/speckit.implement
-```
+| Trigger | Action |
+|---------|--------|
+| `ai:plan` label on Project | Creates Plan Issue with artifacts |
+| `ai:tasks` label on Project | Generates Milestones and Issues |
+| `ai:ready` label on Issue | Implements task and creates PR |
 
 ## Key Principles
 
-- **Be explicit** about what you're building and why
-- **Don't focus on tech stack** during specification phase
-- **Iterate and refine** your specifications before implementation
-- **Validate** the plan before coding begins
-- **Let the AI agent handle** the implementation details
+- **Be explicit** about what you are building and why
+- **Avoid tech stack details** during specification phase
+- **Iterate and refine** specifications before triggering planning
+- **Review artifacts** in Linear before advancing to the next phase
+- **Let the CI automation** handle implementation details
 
 ## Next Steps
 
-- Read the [complete methodology](../spec-driven.md) for in-depth guidance
-- Check out [more examples](../templates) in the repository
-- Explore the [source code on GitHub](https://github.com/github/spec-kit)
+- [CI Integration Guide](ci-integration.md) - Set up Woodpecker CI automation
+- [Webhook Setup](webhook-setup.md) - Configure Linear webhooks
+- [Spec-Driven Development Methodology](../spec-driven.md) - In-depth guidance

@@ -1,67 +1,103 @@
-# Spec Kit
+# Spec Kit Linear
 
-*Build high-quality software faster.*
+*Linear-native Spec-Driven Development*
 
-**An effort to allow organizations to focus on product scenarios rather than writing undifferentiated code with the help of Spec-Driven Development.**
+**A Linear-integrated toolkit for structured software development. Specifications become Linear Projects, tasks become Issues, and CI automation handles planning and implementation.**
 
-## What is Spec-Driven Development?
+## What is Spec Kit Linear?
 
-Spec-Driven Development **flips the script** on traditional software development. For decades, code has been king — specifications were just scaffolding we built and discarded once the "real work" of coding began. Spec-Driven Development changes this: **specifications become executable**, directly generating working implementations rather than just guiding them.
+Spec Kit Linear transforms Spec-Driven Development into a **Linear-native workflow** where:
+
+- **Specifications** are stored as Linear Project content
+- **Planning artifacts** are posted as Issue comments
+- **Tasks** become Linear Issues with Milestones
+- **Blocking relations** enforce workflow dependencies
+- **CI automation** handles planning, task generation, and implementation
+
+Everything lives in Linear. No scattered markdown files. No manual syncing. Just structured development backed by your existing project management tool.
 
 ## Getting Started
 
 - [Installation Guide](installation.md)
 - [Quick Start Guide](quickstart.md)
-- [Upgrade Guide](upgrade.md)
-- [Local Development](local-development.md)
+- [CI Integration](ci-integration.md)
+- [Webhook Setup](webhook-setup.md)
+
+## The Workflow
+
+### Phase 1: Interactive Specification
+
+Use Claude Code to create and refine specifications that are stored directly in Linear:
+
+```
+/speckit.specify Build a task management app with Kanban boards
+/speckit.clarify Focus on security requirements
+```
+
+### Phase 2: Planning (CI-Triggered)
+
+Add the `ai:plan` label to your Linear Project. CI automation creates a Plan Issue with research, data models, and API contracts as comments.
+
+### Phase 3: Task Generation (CI-Triggered)
+
+Add the `ai:tasks` label. CI creates Milestones and Issues with blocking relations to enforce dependencies.
+
+### Phase 4: Implementation (Per-Issue CI)
+
+Add the `ai:ready` label to individual Issues. CI implements the code, runs tests, and creates Pull Requests.
+
+### Phase 5: Review and Merge
+
+Review PRs in GitHub. Merge to auto-close Linear Issues. Request changes to trigger CI feedback addressing.
 
 ## Core Philosophy
 
 Spec-Driven Development is a structured process that emphasizes:
 
-- **Intent-driven development** where specifications define the "*what*" before the "*how*"
+- **Intent-driven development** where specifications define the "what" before the "how"
 - **Rich specification creation** using guardrails and organizational principles
 - **Multi-step refinement** rather than one-shot code generation from prompts
-- **Heavy reliance** on advanced AI model capabilities for specification interpretation
+- **Linear-native storage** so everything lives in your existing project management tool
 
-## Development Phases
+## Label System
 
-| Phase | Focus | Key Activities |
-|-------|-------|----------------|
-| **0-to-1 Development** ("Greenfield") | Generate from scratch | <ul><li>Start with high-level requirements</li><li>Generate specifications</li><li>Plan implementation steps</li><li>Build production-ready applications</li></ul> |
-| **Creative Exploration** | Parallel implementations | <ul><li>Explore diverse solutions</li><li>Support multiple technology stacks & architectures</li><li>Experiment with UX patterns</li></ul> |
-| **Iterative Enhancement** ("Brownfield") | Brownfield modernization | <ul><li>Add features iteratively</li><li>Modernize legacy systems</li><li>Adapt processes</li></ul> |
+| Label | Applied By | Meaning |
+|-------|------------|---------|
+| `ai:plan` | Human | Ready for planning phase |
+| `ai:tasks` | Human | Plan approved, generate tasks |
+| `ai:ready` | Human | Issue ready to be worked |
+| `ai:in-progress` | Agent | Currently working |
+| `ai:blocked` | Agent | Needs human intervention |
+| `ai:review` | Agent | PR created, awaiting review |
 
-## Experimental Goals
+## Commands Reference
 
-Our research and experimentation focus on:
+### Interactive Commands (Terminal)
 
-### Technology Independence
+| Command | Description |
+|---------|-------------|
+| `/speckit.constitution` | Create project governance principles |
+| `/speckit.specify [description]` | Create Linear Project with specification |
+| `/speckit.clarify [project-id]` | Clarify underspecified areas |
 
-- Create applications using diverse technology stacks
-- Validate the hypothesis that Spec-Driven Development is a process not tied to specific technologies, programming languages, or frameworks
+### CI-Triggered Commands
 
-### Enterprise Constraints
+| Trigger | Command | Description |
+|---------|---------|-------------|
+| `ai:plan` label | `/speckit.plan` | Create Plan Issue with artifacts |
+| `ai:tasks` label | `/speckit.tasks` | Generate Milestones and Issues |
+| `ai:ready` label | `/speckit.implement` | Implement Issue, create PR |
 
-- Demonstrate mission-critical application development
-- Incorporate organizational constraints (cloud providers, tech stacks, engineering practices)
-- Support enterprise design systems and compliance requirements
+## Learn More
 
-### User-Centric Development
-
-- Build applications for different user cohorts and preferences
-- Support various development approaches (from vibe-coding to AI-native development)
-
-### Creative & Iterative Processes
-
-- Validate the concept of parallel implementation exploration
-- Provide robust iterative feature development workflows
-- Extend processes to handle upgrades and modernization tasks
+- [AGENTS.md](../AGENTS.md) - Detailed workflow documentation
+- [CI Integration](ci-integration.md) - CI setup guide
+- [Webhook Setup](webhook-setup.md) - Webhook configuration
 
 ## Contributing
 
-Please see our [Contributing Guide](https://github.com/github/spec-kit/blob/main/CONTRIBUTING.md) for information on how to contribute to this project.
+Please see our [Contributing Guide](../CONTRIBUTING.md) for information on how to contribute to this project.
 
 ## Support
 
-For support, please check our [Support Guide](https://github.com/github/spec-kit/blob/main/SUPPORT.md) or open an issue on GitHub.
+For support, please check our [Support Guide](../SUPPORT.md) or open an issue on GitHub.

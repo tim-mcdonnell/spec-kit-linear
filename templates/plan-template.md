@@ -1,9 +1,14 @@
 # Implementation Plan: [FEATURE]
 
-**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
-**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
+**Date**: [DATE] | **Project**: [Linear Project URL]
 
-**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
+<!--
+  This plan is created as a "Plan Issue" in Linear.
+  Planning artifacts (Research, Data Model, API Contracts) are posted as comments on the Plan Issue.
+  The specification is read from the Linear Project's content field.
+
+  Triggered by: Adding `ai:plan` label to the Project, or running /speckit.plan manually.
+-->
 
 ## Summary
 
@@ -35,16 +40,20 @@
 
 ## Project Structure
 
-### Documentation (this feature)
+### Linear Structure (this feature)
 
 ```text
-specs/[###-feature]/
-├── plan.md              # This file (/speckit.plan command output)
-├── research.md          # Phase 0 output (/speckit.plan command)
-├── data-model.md        # Phase 1 output (/speckit.plan command)
-├── quickstart.md        # Phase 1 output (/speckit.plan command)
-├── contracts/           # Phase 1 output (/speckit.plan command)
-└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
+Linear Project: [Project Name]
+├── content              # Feature specification (Markdown)
+└── Issues
+    ├── Plan: [Project Name]     # Plan Issue with artifact comments
+    │   ├── ## Research Findings      (comment)
+    │   ├── ## Data Model             (comment)
+    │   ├── ## API Contracts          (comment)
+    │   └── ## Quickstart Guide       (comment)
+    ├── [T001] Setup...              # Task issues (created by /speckit.tasks)
+    ├── [T002] Model...
+    └── ...
 ```
 
 ### Source Code (repository root)

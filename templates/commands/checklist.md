@@ -1,8 +1,12 @@
 ---
-description: Generate a custom checklist for the current feature based on user requirements.
-scripts:
-  sh: scripts/bash/check-prerequisites.sh --json
-  ps: scripts/powershell/check-prerequisites.ps1 -Json
+description: Generate a custom checklist for the current Linear Project based on user requirements.
+handoffs:
+  - label: Update Specification
+    agent: speckit.specify
+    prompt: Update the specification based on checklist findings
+  - label: Clarify Requirements
+    agent: speckit.clarify
+    prompt: Clarify requirements based on checklist gaps
 ---
 
 ## Checklist Purpose: "Unit Tests for English"
@@ -36,9 +40,10 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Execution Steps
 
-1. **Setup**: Run `{SCRIPT}` from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS list.
-   - All file paths must be absolute.
-   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. **Setup**: Load the Linear Project and its artifacts.
+   - Parse Project ID from user input
+   - Load `linear-config.json` for team configuration
+   - Query the Project to get spec content, Plan Issue, and task Issues
 
 2. **Clarify intent (dynamic)**: Derive up to THREE initial contextual clarifying questions (no pre-baked catalog). They MUST:
    - Be generated from the user's phrasing + extracted signals from spec/plan/tasks
@@ -78,19 +83,41 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Map focus selections to category scaffolding
    - Infer any missing context from spec/plan/tasks (do NOT hallucinate)
 
-4. **Load feature context**: Read from FEATURE_DIR:
-   - spec.md: Feature requirements and scope
-   - plan.md (if exists): Technical details, dependencies
-   - tasks.md (if exists): Implementation tasks
+4. **Load feature context**: Query Linear Project artifacts:
+
+   ```graphql
+   query GetProjectForChecklist($id: String!) {
+     project(id: $id) {
+       id
+       name
+       identifier
+       content
+       issues {
+         nodes {
+           id
+           identifier
+           title
+           description
+           state { name }
+           comments { nodes { id body createdAt } }
+         }
+       }
+     }
+   }
+   ```
+
+   - Project `content` field: Feature requirements and scope (spec)
+   - Plan Issue (title starts with "Plan:"): Technical details, dependencies
+   - Task Issues: Implementation tasks
 
    **Context Loading Strategy**:
-   - Load only necessary portions relevant to active focus areas (avoid full-file dumping)
+   - Load only necessary portions relevant to active focus areas (avoid dumping entire artifacts)
    - Prefer summarizing long sections into concise scenario/requirement bullets
    - Use progressive disclosure: add follow-on retrieval only if gaps detected
-   - If source docs are large, generate interim summary items instead of embedding raw text
+   - If artifacts are large, generate interim summary items instead of embedding raw text
 
 5. **Generate checklist** - Create "Unit Tests for Requirements":
-   - Create `FEATURE_DIR/checklists/` directory if it doesn't exist
+   - Create `checklists/[project-identifier]/` directory if it doesn't exist (e.g., `checklists/TIM-P-001/`)
    - Generate unique checklist filename:
      - Use short, descriptive name based on domain (e.g., `ux.md`, `api.md`, `security.md`)
      - Format: `[domain].md`
@@ -218,9 +245,11 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 - Multiple checklists of different types (e.g., `ux.md`, `test.md`, `security.md`)
 - Simple, memorable filenames that indicate checklist purpose
-- Easy identification and navigation in the `checklists/` folder
+- Easy identification and navigation in the `checklists/[project-identifier]/` folder
 
 To avoid clutter, use descriptive types and clean up obsolete checklists when done.
+
+**NOTE**: Checklists are stored locally (not in Linear) because they are review artifacts used during the specification process. They reference Linear Project content via the Project identifier.
 
 ## Example Checklist Types & Sample Items
 

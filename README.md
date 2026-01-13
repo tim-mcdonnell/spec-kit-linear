@@ -39,8 +39,12 @@ Everything lives in Linear. No scattered markdown files. No manual syncing. Just
 ### 1. Install Dependencies
 
 ```bash
-# Install the Python package
-uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
+# Clone this repository
+git clone https://github.com/your-org/spec-kit-linear.git
+cd spec-kit-linear
+
+# Install the Python package locally
+uv pip install -e .
 
 # Set up Linear API token
 export LINEAR_TOKEN="lin_api_..."

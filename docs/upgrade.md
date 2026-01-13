@@ -1,6 +1,12 @@
 # Upgrade Guide
 
-> You have Spec Kit installed and want to upgrade to the latest version to get new features, bug fixes, or updated slash commands. This guide covers both upgrading the CLI tool and updating your project files.
+> [!CAUTION]
+> **This documentation needs revision.** This upgrade guide was written for the original file-based Spec Kit workflow and contains outdated references to:
+> - The original `github/spec-kit` repository (this project is `spec-kit-linear`)
+> - Shell scripts in `.specify/scripts/` (removed in Linear-native workflow)
+> - Local file storage (`specs/`, `.specify/templates/`, `.specify/memory/`)
+>
+> For Spec Kit Linear, specifications are stored in Linear Projects and tasks are Linear Issues. See the [README](../README.md) for the current workflow.
 
 ---
 
