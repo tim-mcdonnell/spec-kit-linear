@@ -1,0 +1,33 @@
+{
+  "$schema": "./linear-config.schema.json",
+  "_comment": "Configure your Linear workspace IDs. Run 'specify linear-setup' to auto-populate.",
+
+  "teamId": "",
+
+  "labels": {
+    "ai:plan": "",
+    "ai:tasks": "",
+    "ai:ready": "",
+    "ai:in-progress": "",
+    "ai:retry": "",
+    "ai:blocked": "",
+    "ai:needs-input": "",
+    "ai:review": ""
+  },
+
+  "states": {
+    "backlog": "",
+    "todo": "",
+    "inProgress": "",
+    "inReview": "",
+    "done": "",
+    "canceled": ""
+  },
+
+  "projectStatuses": {
+    "planned": "",
+    "started": "",
+    "completed": "",
+    "canceled": ""
+  }
+}

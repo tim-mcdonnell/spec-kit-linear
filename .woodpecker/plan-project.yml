@@ -1,0 +1,62 @@
+# ABOUTME: Woodpecker CI job for planning phase
+# Triggered when ai:plan label is added to a Linear Project
+
+when:
+  - event: custom
+    # Triggered by Linear webhook when ai:plan label is added to a Project
+
+steps:
+  plan:
+    image: anthropic/claude-code:latest
+    environment:
+      LINEAR_TOKEN:
+        from_secret: linear_token
+      ANTHROPIC_API_KEY:
+        from_secret: anthropic_api_key
+    commands:
+      # Parse webhook payload for Project ID
+      - export PROJECT_ID=$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.data.id // .projectId // empty')
+
+      # Validate Project ID was extracted
+      - |
+        if [ -z "$PROJECT_ID" ]; then
+          echo "Error: Could not extract Project ID from webhook payload"
+          exit 1
+        fi
+
+      # Run the planning command
+      - |
+        claude --dangerously-skip-permissions \
+          "/speckit.plan $PROJECT_ID" \
+          --output-format json > /tmp/plan-result.json 2>&1 || true
+
+      # Check result and handle accordingly
+      - |
+        if grep -q '"status": "needs_input"' /tmp/plan-result.json; then
+          echo "Planning requires human input - ai:needs-input label added"
+          exit 0
+        elif grep -q '"status": "success"' /tmp/plan-result.json; then
+          echo "Planning completed successfully"
+          exit 0
+        else
+          echo "Planning failed - check Plan Issue comments for details"
+          cat /tmp/plan-result.json
+          exit 1
+        fi
+
+  notify-failure:
+    image: curlimages/curl:latest
+    when:
+      - status: failure
+    environment:
+      LINEAR_TOKEN:
+        from_secret: linear_token
+    commands:
+      - export PROJECT_ID=$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.data.id // .projectId // empty')
+      - |
+        curl -X POST https://api.linear.app/graphql \
+          -H "Authorization: $LINEAR_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"query\": \"mutation { issueCreate(input: { teamId: \\\"$TEAM_ID\\\", title: \\\"CI: Planning job failed\\\", description: \\\"The planning CI job failed for project. Check Woodpecker logs for details.\\\" }) { issue { id } } }\"
+          }"

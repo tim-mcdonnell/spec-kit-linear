@@ -1,0 +1,104 @@
+# ABOUTME: Woodpecker CI job for addressing PR review feedback
+# Triggered when changes are requested on a Pull Request
+
+when:
+  - event: pull_request
+    action: review_requested_changes
+  - event: custom
+    # Also triggered by GitHub webhook for review with changes_requested
+
+steps:
+  checkout:
+    image: alpine/git:latest
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      # Determine PR number and branch from event
+      - export PR_NUMBER=${CI_PULL_REQUEST:-$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.pull_request.number // empty')}
+      - export BRANCH=${CI_COMMIT_BRANCH:-$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.pull_request.head.ref // empty')}
+
+      # Clone and checkout the PR branch
+      - git clone https://${GITHUB_TOKEN}@github.com/${CI_REPO}.git /workspace
+      - cd /workspace
+      - git fetch origin $BRANCH
+      - git checkout $BRANCH
+
+  address-review:
+    image: anthropic/claude-code:latest
+    environment:
+      LINEAR_TOKEN:
+        from_secret: linear_token
+      ANTHROPIC_API_KEY:
+        from_secret: anthropic_api_key
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - cd /workspace
+
+      # Get PR number
+      - export PR_NUMBER=${CI_PULL_REQUEST:-$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.pull_request.number // empty')}
+
+      # Configure git for commits
+      - git config user.name "Claude Code Bot"
+      - git config user.email "claude-bot@example.com"
+
+      # Extract Issue identifier from PR title or body (format: "TIM-123: ..." or "Fixes TIM-123")
+      - |
+        export ISSUE_IDENTIFIER=$(gh pr view $PR_NUMBER --json title,body \
+          | jq -r '(.title + " " + .body)' \
+          | grep -oE '[A-Z]+-[0-9]+' \
+          | head -1)
+
+      # Fetch PR review comments
+      - |
+        gh pr view $PR_NUMBER --json reviews,comments > /tmp/pr-feedback.json
+        echo "Review feedback:"
+        cat /tmp/pr-feedback.json | jq '.reviews[-1] // .comments[-1]'
+
+      # Run claude to address the feedback
+      - |
+        claude --dangerously-skip-permissions \
+          "Address the PR review feedback for PR #$PR_NUMBER. Issue: $ISSUE_IDENTIFIER. Review: $(cat /tmp/pr-feedback.json | jq -c '.')" \
+          --output-format json > /tmp/feedback-result.json 2>&1 || true
+
+      # Push changes if any were made
+      - |
+        if git diff --quiet; then
+          echo "No changes made"
+        else
+          git push origin HEAD
+          echo "Changes pushed to address feedback"
+        fi
+
+      # Post comment on Linear issue
+      - |
+        if [ -n "$ISSUE_IDENTIFIER" ]; then
+          # Get issue ID from identifier
+          ISSUE_ID=$(curl -s -X POST https://api.linear.app/graphql \
+            -H "Authorization: $LINEAR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"query { issueSearch(query: \\\"$ISSUE_IDENTIFIER\\\") { nodes { id } } }\"}" \
+            | jq -r '.data.issueSearch.nodes[0].id // empty')
+
+          if [ -n "$ISSUE_ID" ]; then
+            curl -X POST https://api.linear.app/graphql \
+              -H "Authorization: $LINEAR_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"query\": \"mutation { commentCreate(input: { issueId: \\\"$ISSUE_ID\\\", body: \\\"Addressed PR review feedback. New commits pushed.\\\" }) { comment { id } } }\"
+              }"
+          fi
+        fi
+
+  notify-failure:
+    image: curlimages/curl:latest
+    when:
+      - status: failure
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - export PR_NUMBER=${CI_PULL_REQUEST:-$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.pull_request.number // empty')}
+      - |
+        gh pr comment $PR_NUMBER --body "Claude was unable to automatically address the review feedback. Manual intervention required."

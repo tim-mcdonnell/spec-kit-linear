@@ -1,413 +1,310 @@
 # AGENTS.md
 
-## About Spec Kit and Specify
+## About Spec Kit Linear
 
-**GitHub Spec Kit** is a comprehensive toolkit for implementing Spec-Driven Development (SDD) - a methodology that emphasizes creating clear specifications before implementation. The toolkit includes templates, scripts, and workflows that guide development teams through a structured approach to building software.
+**Spec Kit Linear** is a Linear-native implementation of Spec-Driven Development (SDD) - a methodology that emphasizes creating clear specifications before implementation. Everything is stored in Linear: specifications as Projects, planning artifacts as Issue comments, tasks as Issues with Milestones, and blocking relations to enforce workflow dependencies.
 
-**Specify CLI** is the command-line interface that bootstraps projects with the Spec Kit framework. It sets up the necessary directory structures, templates, and AI agent integrations to support the Spec-Driven Development workflow.
-
-The toolkit supports multiple AI coding assistants, allowing teams to use their preferred tools while maintaining consistent project structure and development practices.
+The toolkit provides:
+- **Interactive Commands**: Terminal-based commands for creating and clarifying specifications
+- **CI/CD Automation**: Woodpecker CI jobs triggered by Linear labels for planning, task generation, and implementation
+- **Linear GraphQL Integration**: Python client library for all Linear API operations
 
 ---
 
-## General practices
+## Workflow Overview
 
-- Any changes to `__init__.py` for the Specify CLI require a version rev in `pyproject.toml` and addition of entries to `CHANGELOG.md`.
+### Phase 1: Interactive (Terminal with Claude Code)
 
-## Adding New Agent Support
+```
+You + Claude → /speckit.specify → Creates Linear Project with spec in content field
+You + Claude → /speckit.clarify → Updates Project content with clarifications
+You → Review Project in Linear UI
+You → Add "ai:plan" label when ready
+```
 
-This section explains how to add support for new AI agents/assistants to the Specify CLI. Use this guide as a reference when integrating new AI tools into the Spec-Driven Development workflow.
+### Phase 2: Planning (CI-Triggered)
 
-### Overview
+```
+"ai:plan" label added → Webhook → Woodpecker CI
+Claude agent:
+  1. Creates "Plan: [Project Name]" Issue
+  2. Posts research findings as comment
+  3. Posts data model as comment
+  4. Posts API contracts as comment
+  5. Updates Plan Issue description with summary
+  6. If blocked: adds "ai:needs-input" label, exits
+  7. If successful: marks Plan Issue "Done"
+You → Add "ai:tasks" label when ready
+```
 
-Specify supports multiple AI agents by generating agent-specific command files and directory structures when initializing projects. Each agent has its own conventions for:
+### Phase 3: Task Generation (CI-Triggered)
 
-- **Command file formats** (Markdown, TOML, etc.)
-- **Directory structures** (`.claude/commands/`, `.windsurf/workflows/`, etc.)
-- **Command invocation patterns** (slash commands, CLI tools, etc.)
-- **Argument passing conventions** (`$ARGUMENTS`, `{{args}}`, etc.)
+```
+"ai:tasks" label added → Webhook → Woodpecker CI
+Claude agent:
+  1. Reads Plan Issue and artifact comments
+  2. Creates Milestones for phases
+  3. Creates Issues for tasks with blocking relations
+  4. Posts summary on Plan Issue
+You → Add "ai:ready" to issues you want worked
+```
 
-### Current Supported Agents
+### Phase 4: Implementation (Per-Issue CI)
 
-| Agent                      | Directory              | Format   | CLI Tool        | Description                 |
-| -------------------------- | ---------------------- | -------- | --------------- | --------------------------- |
-| **Claude Code**            | `.claude/commands/`    | Markdown | `claude`        | Anthropic's Claude Code CLI |
-| **Gemini CLI**             | `.gemini/commands/`    | TOML     | `gemini`        | Google's Gemini CLI         |
-| **GitHub Copilot**         | `.github/agents/`      | Markdown | N/A (IDE-based) | GitHub Copilot in VS Code   |
-| **Cursor**                 | `.cursor/commands/`    | Markdown | `cursor-agent`  | Cursor CLI                  |
-| **Qwen Code**              | `.qwen/commands/`      | TOML     | `qwen`          | Alibaba's Qwen Code CLI     |
-| **opencode**               | `.opencode/command/`   | Markdown | `opencode`      | opencode CLI                |
-| **Codex CLI**              | `.codex/commands/`     | Markdown | `codex`         | Codex CLI                   |
-| **Windsurf**               | `.windsurf/workflows/` | Markdown | N/A (IDE-based) | Windsurf IDE workflows      |
-| **Kilo Code**              | `.kilocode/rules/`     | Markdown | N/A (IDE-based) | Kilo Code IDE               |
-| **Auggie CLI**             | `.augment/rules/`      | Markdown | `auggie`        | Auggie CLI                  |
-| **Roo Code**               | `.roo/rules/`          | Markdown | N/A (IDE-based) | Roo Code IDE                |
-| **CodeBuddy CLI**          | `.codebuddy/commands/` | Markdown | `codebuddy`     | CodeBuddy CLI               |
-| **Qoder CLI**              | `.qoder/commands/`     | Markdown | `qoder`         | Qoder CLI                   |
-| **Amazon Q Developer CLI** | `.amazonq/prompts/`    | Markdown | `q`             | Amazon Q Developer CLI      |
-| **Amp**                    | `.agents/commands/`    | Markdown | `amp`           | Amp CLI                     |
-| **SHAI**                   | `.shai/commands/`      | Markdown | `shai`          | SHAI CLI                    |
-| **IBM Bob**                | `.bob/commands/`       | Markdown | N/A (IDE-based) | IBM Bob IDE                 |
+```
+"ai:ready" label on Issue → Webhook → Woodpecker CI
+Claude agent:
+  1. Checks blocking relations
+  2. Creates feature branch
+  3. Implements task (code + tests)
+  4. Creates PR with "Fixes TIM-XXX" reference
+  5. Updates Issue status to "In Review"
+```
 
-### Step-by-Step Integration Guide
+### Phase 5: PR Review
 
-Follow these steps to add a new agent (using a hypothetical new agent as an example):
+```
+You → Review PR in GitHub
+  - Approve → Merge → Linear auto-closes Issue
+  - Request changes → CI triggers retry → Agent addresses feedback
+```
 
-#### 1. Add to AGENT_CONFIG
+---
 
-**IMPORTANT**: Use the actual CLI tool name as the key, not a shortened version.
+## Label System
 
-Add the new agent to the `AGENT_CONFIG` dictionary in `src/specify_cli/__init__.py`. This is the **single source of truth** for all agent metadata:
+| Label | Applied By | Meaning |
+|-------|------------|---------|
+| `ai:plan` | Human | Project ready for planning phase |
+| `ai:tasks` | Human | Plan approved, generate tasks |
+| `ai:ready` | Human | Issue ready to be worked |
+| `ai:in-progress` | Agent | Currently working on issue |
+| `ai:retry` | Agent | First failure, will retry once |
+| `ai:blocked` | Agent | Needs human intervention |
+| `ai:needs-input` | Agent | Has specific questions |
+| `ai:review` | Agent | PR created, awaiting review |
+
+---
+
+## Project Structure
+
+```
+spec-kit-linear/
+├── src/
+│   ├── specify_cli/          # CLI for interactive commands
+│   │   └── __init__.py       # Main CLI implementation
+│   └── linear/               # Linear GraphQL client library
+│       ├── __init__.py       # Package exports
+│       ├── client.py         # HTTP client with auth
+│       ├── queries.py        # Read operations
+│       ├── mutations.py      # Write operations
+│       └── types.py          # Type definitions
+├── templates/
+│   └── commands/             # Command templates
+│       ├── specify.md        # Create Linear Project
+│       ├── clarify.md        # Clarify specification
+│       ├── plan.md           # Generate planning artifacts
+│       ├── tasks.md          # Generate milestones/issues
+│       └── implement.md      # Implement single issue
+├── .woodpecker/              # CI job definitions
+│   ├── plan-project.yml      # Triggered by ai:plan
+│   ├── generate-tasks.yml    # Triggered by ai:tasks
+│   ├── implement-issue.yml   # Triggered by ai:ready
+│   ├── retry-issue.yml       # Triggered by ai:retry
+│   └── address-feedback.yml  # Triggered by PR review
+├── linear-config.json        # Team/label/state IDs
+└── docs/
+    ├── ci-integration.md     # CI setup guide
+    └── webhook-setup.md      # Webhook configuration
+```
+
+---
+
+## Linear GraphQL Client
+
+The `src/linear/` package provides a typed Python client for Linear's GraphQL API.
+
+### Quick Start
 
 ```python
-AGENT_CONFIG = {
-    # ... existing agents ...
-    "new-agent-cli": {  # Use the ACTUAL CLI tool name (what users type in terminal)
-        "name": "New Agent Display Name",
-        "folder": ".newagent/",  # Directory for agent files
-        "install_url": "https://example.com/install",  # URL for installation docs (or None if IDE-based)
-        "requires_cli": True,  # True if CLI tool required, False for IDE-based agents
-    },
-}
+from linear import LinearClient, LinearQueries, LinearMutations
+
+# Initialize client (uses LINEAR_TOKEN env var)
+client = LinearClient()
+queries = LinearQueries(client)
+mutations = LinearMutations(client)
+
+# Get an issue
+issue = queries.get_issue("TIM-123")
+print(f"{issue.identifier}: {issue.title}")
+
+# Create a comment
+comment = mutations.create_comment(issue.id, "## Update\nWork completed.")
+
+# Update issue state
+mutations.update_issue(issue.id, state_id="done-state-uuid")
 ```
 
-**Key Design Principle**: The dictionary key should match the actual executable name that users install. For example:
+### Key Operations
 
-- ✅ Use `"cursor-agent"` because the CLI tool is literally called `cursor-agent`
-- ❌ Don't use `"cursor"` as a shortcut if the tool is `cursor-agent`
+**Queries:**
+- `get_issue(id)` - Get issue by ID or identifier
+- `get_project(id)` - Get project with content
+- `get_issue_comments(id)` - Get all comments on issue
+- `get_team(id)` - Get team with states and labels
+- `find_plan_issue(project_id)` - Find Plan Issue for project
 
-This eliminates the need for special-case mappings throughout the codebase.
+**Mutations:**
+- `create_project(name, team_ids, content)` - Create new project
+- `update_project(id, content)` - Update project content
+- `create_issue(title, team_id, project_id)` - Create issue
+- `update_issue(id, state_id, label_ids)` - Update issue
+- `create_comment(issue_id, body)` - Add comment
+- `create_milestone(project_id, name)` - Create milestone
+- `create_blocking_relation(blocker_id, blocked_id)` - Create block relation
 
-**Field Explanations**:
+---
 
-- `name`: Human-readable display name shown to users
-- `folder`: Directory where agent-specific files are stored (relative to project root)
-- `install_url`: Installation documentation URL (set to `None` for IDE-based agents)
-- `requires_cli`: Whether the agent requires a CLI tool check during initialization
+## Configuration
 
-#### 2. Update CLI Help Text
-
-Update the `--ai` parameter help text in the `init()` command to include the new agent:
-
-```python
-ai_assistant: str = typer.Option(None, "--ai", help="AI assistant to use: claude, gemini, copilot, cursor-agent, qwen, opencode, codex, windsurf, kilocode, auggie, codebuddy, new-agent-cli, or q"),
-```
-
-Also update any function docstrings, examples, and error messages that list available agents.
-
-#### 3. Update README Documentation
-
-Update the **Supported AI Agents** section in `README.md` to include the new agent:
-
-- Add the new agent to the table with appropriate support level (Full/Partial)
-- Include the agent's official website link
-- Add any relevant notes about the agent's implementation
-- Ensure the table formatting remains aligned and consistent
-
-#### 4. Update Release Package Script
-
-Modify `.github/workflows/scripts/create-release-packages.sh`:
-
-##### Add to ALL_AGENTS array
-
-```bash
-ALL_AGENTS=(claude gemini copilot cursor-agent qwen opencode windsurf q)
-```
-
-##### Add case statement for directory structure
-
-```bash
-case $agent in
-  # ... existing cases ...
-  windsurf)
-    mkdir -p "$base_dir/.windsurf/workflows"
-    generate_commands windsurf md "\$ARGUMENTS" "$base_dir/.windsurf/workflows" "$script" ;;
-esac
-```
-
-#### 4. Update GitHub Release Script
-
-Modify `.github/workflows/scripts/create-github-release.sh` to include the new agent's packages:
-
-```bash
-gh release create "$VERSION" \
-  # ... existing packages ...
-  .genreleases/spec-kit-template-windsurf-sh-"$VERSION".zip \
-  .genreleases/spec-kit-template-windsurf-ps-"$VERSION".zip \
-  # Add new agent packages here
-```
-
-#### 5. Update Agent Context Scripts
-
-##### Bash script (`scripts/bash/update-agent-context.sh`)
-
-Add file variable:
-
-```bash
-WINDSURF_FILE="$REPO_ROOT/.windsurf/rules/specify-rules.md"
-```
-
-Add to case statement:
-
-```bash
-case "$AGENT_TYPE" in
-  # ... existing cases ...
-  windsurf) update_agent_file "$WINDSURF_FILE" "Windsurf" ;;
-  "")
-    # ... existing checks ...
-    [ -f "$WINDSURF_FILE" ] && update_agent_file "$WINDSURF_FILE" "Windsurf";
-    # Update default creation condition
-    ;;
-esac
-```
-
-##### PowerShell script (`scripts/powershell/update-agent-context.ps1`)
-
-Add file variable:
-
-```powershell
-$windsurfFile = Join-Path $repoRoot '.windsurf/rules/specify-rules.md'
-```
-
-Add to switch statement:
-
-```powershell
-switch ($AgentType) {
-    # ... existing cases ...
-    'windsurf' { Update-AgentFile $windsurfFile 'Windsurf' }
-    '' {
-        foreach ($pair in @(
-            # ... existing pairs ...
-            @{file=$windsurfFile; name='Windsurf'}
-        )) {
-            if (Test-Path $pair.file) { Update-AgentFile $pair.file $pair.name }
-        }
-        # Update default creation condition
-    }
-}
-```
-
-#### 6. Update CLI Tool Checks (Optional)
-
-For agents that require CLI tools, add checks in the `check()` command and agent validation:
-
-```python
-# In check() command
-tracker.add("windsurf", "Windsurf IDE (optional)")
-windsurf_ok = check_tool_for_tracker("windsurf", "https://windsurf.com/", tracker)
-
-# In init validation (only if CLI tool required)
-elif selected_ai == "windsurf":
-    if not check_tool("windsurf", "Install from: https://windsurf.com/"):
-        console.print("[red]Error:[/red] Windsurf CLI is required for Windsurf projects")
-        agent_tool_missing = True
-```
-
-**Note**: CLI tool checks are now handled automatically based on the `requires_cli` field in AGENT_CONFIG. No additional code changes needed in the `check()` or `init()` commands - they automatically loop through AGENT_CONFIG and check tools as needed.
-
-## Important Design Decisions
-
-### Using Actual CLI Tool Names as Keys
-
-**CRITICAL**: When adding a new agent to AGENT_CONFIG, always use the **actual executable name** as the dictionary key, not a shortened or convenient version.
-
-**Why this matters:**
-
-- The `check_tool()` function uses `shutil.which(tool)` to find executables in the system PATH
-- If the key doesn't match the actual CLI tool name, you'll need special-case mappings throughout the codebase
-- This creates unnecessary complexity and maintenance burden
-
-**Example - The Cursor Lesson:**
-
-❌ **Wrong approach** (requires special-case mapping):
-
-```python
-AGENT_CONFIG = {
-    "cursor": {  # Shorthand that doesn't match the actual tool
-        "name": "Cursor",
-        # ...
-    }
-}
-
-# Then you need special cases everywhere:
-cli_tool = agent_key
-if agent_key == "cursor":
-    cli_tool = "cursor-agent"  # Map to the real tool name
-```
-
-✅ **Correct approach** (no mapping needed):
-
-```python
-AGENT_CONFIG = {
-    "cursor-agent": {  # Matches the actual executable name
-        "name": "Cursor",
-        # ...
-    }
-}
-
-# No special cases needed - just use agent_key directly!
-```
-
-**Benefits of this approach:**
-
-- Eliminates special-case logic scattered throughout the codebase
-- Makes the code more maintainable and easier to understand
-- Reduces the chance of bugs when adding new agents
-- Tool checking "just works" without additional mappings
-
-#### 7. Update Devcontainer files (Optional)
-
-For agents that have VS Code extensions or require CLI installation, update the devcontainer configuration files:
-
-##### VS Code Extension-based Agents
-
-For agents available as VS Code extensions, add them to `.devcontainer/devcontainer.json`:
+### linear-config.json
 
 ```json
 {
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        // ... existing extensions ...
-        // [New Agent Name]
-        "[New Agent Extension ID]"
-      ]
-    }
+  "teamId": "your-team-uuid",
+  "labels": {
+    "ai:plan": "label-uuid",
+    "ai:tasks": "label-uuid",
+    "ai:ready": "label-uuid",
+    "ai:in-progress": "label-uuid",
+    "ai:retry": "label-uuid",
+    "ai:blocked": "label-uuid",
+    "ai:needs-input": "label-uuid",
+    "ai:review": "label-uuid"
+  },
+  "states": {
+    "backlog": "state-uuid",
+    "todo": "state-uuid",
+    "inProgress": "state-uuid",
+    "inReview": "state-uuid",
+    "done": "state-uuid"
   }
 }
 ```
 
-##### CLI-based Agents
+### Environment Variables
 
-For agents that require CLI tools, add installation commands to `.devcontainer/post-create.sh`:
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LINEAR_TOKEN` | Yes | Linear API token |
+| `ANTHROPIC_API_KEY` | Yes (CI) | Claude API key for CI jobs |
+| `GITHUB_TOKEN` | Yes (CI) | GitHub token for PR creation |
 
-```bash
-#!/bin/bash
+---
 
-# Existing installations...
+## CI/CD Integration
 
-echo -e "\n🤖 Installing [New Agent Name] CLI..."
-# run_command "npm install -g [agent-cli-package]@latest" # Example for node-based CLI
-# or other installation instructions (must be non-interactive and compatible with Linux Debian "Trixie" or later)...
-echo "✅ Done"
+### Woodpecker CI Setup
 
+1. Add secrets to Woodpecker:
+   - `linear_token` - Linear API token
+   - `anthropic_api_key` - Claude API key
+   - `github_token` - GitHub PAT
+
+2. Configure Linear webhooks to trigger Woodpecker jobs
+
+3. Configure GitHub webhooks for PR review events
+
+See `docs/ci-integration.md` for detailed setup instructions.
+
+### Webhook Events
+
+**Linear → Woodpecker:**
+- `ai:plan` label on Project → `plan-project.yml`
+- `ai:tasks` label on Project → `generate-tasks.yml`
+- `ai:ready` label on Issue → `implement-issue.yml`
+- `ai:retry` label on Issue → `retry-issue.yml`
+
+**GitHub → Woodpecker:**
+- PR review with changes requested → `address-feedback.yml`
+
+---
+
+## Commands Reference
+
+### /speckit.specify
+
+Creates a Linear Project with the specification in the `content` field.
+
+**Usage:**
+```
+/speckit.specify Add user authentication with OAuth2 support
 ```
 
-**Quick Tips:**
+**Creates:**
+- Linear Project with generated name
+- Specification stored in `content` field
+- Validation against quality criteria
 
-- **Extension-based agents**: Add to the `extensions` array in `devcontainer.json`
-- **CLI-based agents**: Add installation scripts to `post-create.sh`
-- **Hybrid agents**: May require both extension and CLI installation
-- **Test thoroughly**: Ensure installations work in the devcontainer environment
+### /speckit.clarify
 
-## Agent Categories
+Identifies underspecified areas and updates the Project content.
 
-### CLI-Based Agents
-
-Require a command-line tool to be installed:
-
-- **Claude Code**: `claude` CLI
-- **Gemini CLI**: `gemini` CLI
-- **Cursor**: `cursor-agent` CLI
-- **Qwen Code**: `qwen` CLI
-- **opencode**: `opencode` CLI
-- **Amazon Q Developer CLI**: `q` CLI
-- **CodeBuddy CLI**: `codebuddy` CLI
-- **Qoder CLI**: `qoder` CLI
-- **Amp**: `amp` CLI
-- **SHAI**: `shai` CLI
-
-### IDE-Based Agents
-
-Work within integrated development environments:
-
-- **GitHub Copilot**: Built into VS Code/compatible editors
-- **Windsurf**: Built into Windsurf IDE
-- **IBM Bob**: Built into IBM Bob IDE
-
-## Command File Formats
-
-### Markdown Format
-
-Used by: Claude, Cursor, opencode, Windsurf, Amazon Q Developer, Amp, SHAI, IBM Bob
-
-**Standard format:**
-
-```markdown
----
-description: "Command description"
----
-
-Command content with {SCRIPT} and $ARGUMENTS placeholders.
+**Usage:**
+```
+/speckit.clarify [project-identifier]
 ```
 
-**GitHub Copilot Chat Mode format:**
+**Process:**
+- Asks up to 5 targeted questions
+- Updates Project content with clarifications
+- Reports coverage status
 
-```markdown
----
-description: "Command description"
-mode: speckit.command-name
----
+### /speckit.plan (CI-Triggered)
 
-Command content with {SCRIPT} and $ARGUMENTS placeholders.
-```
+Creates Plan Issue and generates planning artifacts.
 
-### TOML Format
+**Triggered by:** `ai:plan` label on Project
 
-Used by: Gemini, Qwen
+**Creates:**
+- Plan Issue with title "Plan: [Project Name]"
+- Research findings comment
+- Data model comment
+- API contracts comment
 
-```toml
-description = "Command description"
+### /speckit.tasks (CI-Triggered)
 
-prompt = """
-Command content with {SCRIPT} and {{args}} placeholders.
-"""
-```
+Generates Milestones and Issues from Plan Issue.
 
-## Directory Conventions
+**Triggered by:** `ai:tasks` label on Project
 
-- **CLI agents**: Usually `.<agent-name>/commands/`
-- **IDE agents**: Follow IDE-specific patterns:
-  - Copilot: `.github/agents/`
-  - Cursor: `.cursor/commands/`
-  - Windsurf: `.windsurf/workflows/`
+**Creates:**
+- Milestones for each phase
+- Issues for each task
+- Blocking relations between issues
 
-## Argument Patterns
+### /speckit.implement (CI-Triggered)
 
-Different agents use different argument placeholders:
+Implements a single Issue by creating a branch and PR.
 
-- **Markdown/prompt-based**: `$ARGUMENTS`
-- **TOML-based**: `{{args}}`
-- **Script placeholders**: `{SCRIPT}` (replaced with actual script path)
-- **Agent placeholders**: `__AGENT__` (replaced with agent name)
+**Triggered by:** `ai:ready` label on Issue
 
-## Testing New Agent Integration
-
-1. **Build test**: Run package creation script locally
-2. **CLI test**: Test `specify init --ai <agent>` command
-3. **File generation**: Verify correct directory structure and files
-4. **Command validation**: Ensure generated commands work with the agent
-5. **Context update**: Test agent context update scripts
-
-## Common Pitfalls
-
-1. **Using shorthand keys instead of actual CLI tool names**: Always use the actual executable name as the AGENT_CONFIG key (e.g., `"cursor-agent"` not `"cursor"`). This prevents the need for special-case mappings throughout the codebase.
-2. **Forgetting update scripts**: Both bash and PowerShell scripts must be updated when adding new agents.
-3. **Incorrect `requires_cli` value**: Set to `True` only for agents that actually have CLI tools to check; set to `False` for IDE-based agents.
-4. **Wrong argument format**: Use correct placeholder format for each agent type (`$ARGUMENTS` for Markdown, `{{args}}` for TOML).
-5. **Directory naming**: Follow agent-specific conventions exactly (check existing agents for patterns).
-6. **Help text inconsistency**: Update all user-facing text consistently (help strings, docstrings, README, error messages).
-
-## Future Considerations
-
-When adding new agents:
-
-- Consider the agent's native command/workflow patterns
-- Ensure compatibility with the Spec-Driven Development process
-- Document any special requirements or limitations
-- Update this guide with lessons learned
-- Verify the actual CLI tool name before adding to AGENT_CONFIG
+**Process:**
+1. Checks blocking relations
+2. Creates feature branch
+3. Writes code and tests
+4. Creates Pull Request
+5. Updates Issue status
 
 ---
 
-*This documentation should be updated whenever new agents are added to maintain accuracy and completeness.*
+## General Practices
+
+- Changes to `src/specify_cli/__init__.py` require a version bump in `pyproject.toml` and `CHANGELOG.md` entry
+- All specifications are stored in Linear - no local files
+- Blocking relations enforce workflow order
+- CI jobs are idempotent - safe to retry
+
+---
+
+*This documentation reflects the Linear-native workflow. For the original file-based workflow, see the spec-kit repository.*

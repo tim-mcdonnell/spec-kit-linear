@@ -1,6 +1,6 @@
 ---
-description: Generate an actionable, dependency-ordered tasks.md for the feature based on available design artifacts.
-handoffs: 
+description: Generate Linear Milestones and Issues from the Plan Issue artifacts. Triggered by `ai:tasks` label in CI or manually.
+handoffs:
   - label: Analyze For Consistency
     agent: speckit.analyze
     prompt: Run a project analysis for consistency
@@ -9,9 +9,6 @@ handoffs:
     agent: speckit.implement
     prompt: Start the implementation in phases
     send: true
-scripts:
-  sh: scripts/bash/check-prerequisites.sh --json
-  ps: scripts/powershell/check-prerequisites.ps1 -Json
 ---
 
 ## User Input
@@ -20,121 +17,306 @@ scripts:
 $ARGUMENTS
 ```
 
-You **MUST** consider the user input before proceeding (if not empty).
+You **MUST** consider the user input before proceeding (if not empty). The input should include the Project identifier.
 
 ## Outline
 
-1. **Setup**: Run `{SCRIPT}` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+This command reads the Plan Issue and its artifact comments, then creates Milestones and Issues in Linear. In CI mode, this is triggered when the `ai:tasks` label is added to a Project.
 
-2. **Load design documents**: Read from FEATURE_DIR:
-   - **Required**: plan.md (tech stack, libraries, structure), spec.md (user stories with priorities)
-   - **Optional**: data-model.md (entities), contracts/ (API endpoints), research.md (decisions), quickstart.md (test scenarios)
-   - Note: Not all projects have all documents. Generate tasks based on what's available.
+### Execution Steps
 
-3. **Execute task generation workflow**:
-   - Load plan.md and extract tech stack, libraries, project structure
-   - Load spec.md and extract user stories with their priorities (P1, P2, P3, etc.)
-   - If data-model.md exists: Extract entities and map to user stories
-   - If contracts/ exists: Map endpoints to user stories
-   - If research.md exists: Extract decisions for setup tasks
-   - Generate tasks organized by user story (see Task Generation Rules below)
-   - Generate dependency graph showing user story completion order
-   - Create parallel execution examples per user story
-   - Validate task completeness (each user story has all needed tasks, independently testable)
+1. **Load Project and Plan Issue**:
 
-4. **Generate tasks.md**: Use `templates/tasks-template.md` as structure, fill with:
-   - Correct feature name from plan.md
-   - Phase 1: Setup tasks (project initialization)
-   - Phase 2: Foundational tasks (blocking prerequisites for all user stories)
-   - Phase 3+: One phase per user story (in priority order from spec.md)
-   - Each phase includes: story goal, independent test criteria, tests (if requested), implementation tasks
-   - Final Phase: Polish & cross-cutting concerns
-   - All tasks must follow the strict checklist format (see Task Generation Rules below)
-   - Clear file paths for each task
-   - Dependencies section showing story completion order
-   - Parallel execution examples per story
-   - Implementation strategy section (MVP first, incremental delivery)
+   ```graphql
+   query GetProject($id: String!) {
+     project(id: $id) {
+       id
+       name
+       identifier
+       content
+       url
+       teams { nodes { id key } }
+       projectMilestones { nodes { id name } }
+       issues {
+         nodes {
+           id
+           identifier
+           title
+           description
+           state { name }
+           comments { nodes { id body createdAt } }
+         }
+       }
+     }
+   }
+   ```
 
-5. **Report**: Output path to generated tasks.md and summary:
-   - Total task count
-   - Task count per user story
-   - Parallel opportunities identified
-   - Independent test criteria for each story
-   - Suggested MVP scope (typically just User Story 1)
-   - Format validation: Confirm ALL tasks follow the checklist format (checkbox, ID, labels, file paths)
+   - Parse Project ID from input or CI webhook payload
+   - Load `linear-config.json` for team/label/state IDs
+   - Find the Plan Issue (title starts with "Plan:")
+   - Extract all comments from Plan Issue (Research, Data Model, Contracts, etc.)
 
-Context for task generation: {ARGS}
+2. **Verify Plan Issue is complete**:
+   - Check Plan Issue state is "Done"
+   - If not "Done", error: "Plan Issue must be completed before generating tasks. Run `/speckit.plan` first."
+   - Extract spec from Project `content` field
+   - Parse artifact comments for:
+     - Research findings
+     - Data model entities
+     - API contracts
+     - User stories and priorities
 
-The tasks.md should be immediately executable - each task must be specific enough that an LLM can complete it without additional context.
+3. **Generate task breakdown**:
+
+   From the spec and Plan Issue artifacts, derive:
+
+   a. **Phases (become Milestones)**:
+      - Phase 1: Setup (project initialization)
+      - Phase 2: Foundational (blocking prerequisites)
+      - Phase 3+: One phase per user story (in priority order)
+      - Final Phase: Polish & cross-cutting concerns
+
+   b. **Tasks (become Issues)**:
+      - Setup tasks from project structure
+      - Data model entities → model creation issues
+      - API contracts → endpoint implementation issues
+      - User stories → feature implementation issues
+      - Each task must be specific enough for an agent to implement
+
+4. **Create Milestones**:
+
+   ```graphql
+   mutation CreateMilestone($input: ProjectMilestoneCreateInput!) {
+     projectMilestoneCreate(input: $input) {
+       projectMilestone { id name }
+       success
+     }
+   }
+   ```
+
+   For each phase, create a Milestone with:
+   - `projectId`: The project ID
+   - `name`: Phase name (e.g., "1. Setup", "2. Foundational", "3. User Authentication")
+   - `description`: Phase goals and completion criteria
+   - `sortOrder`: Sequential ordering (1.0, 2.0, 3.0, etc.)
+
+5. **Create Issues** (tasks):
+
+   ```graphql
+   mutation CreateIssue($input: IssueCreateInput!) {
+     issueCreate(input: $input) {
+       issue { id identifier title }
+       success
+     }
+   }
+   ```
+
+   For each task, create an Issue with:
+   - `teamId`: Team ID from config
+   - `title`: Task description (with ID prefix like "[T001]")
+   - `description`: Detailed task requirements including:
+     - What to implement
+     - File paths to create/modify
+     - Acceptance criteria
+     - Dependencies (if any)
+   - `projectId`: The project ID
+   - `projectMilestoneId`: The appropriate milestone ID
+   - `priority`: Based on user story priority (P1 → 1, P2 → 2, etc.)
+
+6. **Create blocking relations**:
+
+   ```graphql
+   mutation CreateBlockingRelation($input: IssueRelationCreateInput!) {
+     issueRelationCreate(input: $input) {
+       issueRelation { id type }
+       success
+     }
+   }
+   ```
+
+   - All Phase 2+ issues are blocked by Plan Issue
+   - Setup issues block all other issues
+   - Foundational issues block user story issues
+   - Within a phase, order tasks by logical dependencies
+
+7. **Post summary comment on Plan Issue**:
+
+   ```graphql
+   mutation AddComment($input: CommentCreateInput!) {
+     commentCreate(input: $input) {
+       comment { id body }
+       success
+     }
+   }
+   ```
+
+   Include:
+   - Total milestones created
+   - Total issues created per phase
+   - Issue identifiers grouped by milestone
+   - Dependency graph summary
+   - Next step: "Add `ai:ready` label to issues you want worked"
+
+8. **Handle errors or questions**:
+
+   - **If needs human input**:
+     - Post comment with specific questions on Plan Issue
+     - Add `ai:needs-input` label to Plan Issue
+     - Exit
+
+   - **If successful**:
+     - Remove `ai:tasks` label from Project (in CI mode)
+     - Exit with success
+
+9. **Report completion**:
+   - Number of milestones created
+   - Number of issues created
+   - Summary by phase
+   - Suggested MVP scope (typically Phase 1-3)
+   - Instructions for starting implementation
 
 ## Task Generation Rules
 
-**CRITICAL**: Tasks MUST be organized by user story to enable independent implementation and testing.
+### Task Format
 
-**Tests are OPTIONAL**: Only generate test tasks if explicitly requested in the feature specification or if user requests TDD approach.
+Each Issue must include:
 
-### Checklist Format (REQUIRED)
+1. **Title**: `[T###] Action verb + what + where`
+   - Example: `[T001] Initialize project structure`
+   - Example: `[T005] Create User model in src/models/user.py`
 
-Every task MUST strictly follow this format:
+2. **Description** (markdown):
+   ```markdown
+   ## Objective
+   [What this task accomplishes]
 
-```text
-- [ ] [TaskID] [P?] [Story?] Description with file path
-```
+   ## Files
+   - Create: `src/models/user.py`
+   - Modify: `src/models/__init__.py`
 
-**Format Components**:
+   ## Requirements
+   - [Specific requirement 1]
+   - [Specific requirement 2]
 
-1. **Checkbox**: ALWAYS start with `- [ ]` (markdown checkbox)
-2. **Task ID**: Sequential number (T001, T002, T003...) in execution order
-3. **[P] marker**: Include ONLY if task is parallelizable (different files, no dependencies on incomplete tasks)
-4. **[Story] label**: REQUIRED for user story phase tasks only
-   - Format: [US1], [US2], [US3], etc. (maps to user stories from spec.md)
-   - Setup phase: NO story label
-   - Foundational phase: NO story label  
-   - User Story phases: MUST have story label
-   - Polish phase: NO story label
-5. **Description**: Clear action with exact file path
+   ## Acceptance Criteria
+   - [ ] [Criterion 1]
+   - [ ] [Criterion 2]
 
-**Examples**:
+   ## Dependencies
+   - Blocked by: TIM-001, TIM-002
+   - Blocks: TIM-010, TIM-011
+   ```
 
-- ✅ CORRECT: `- [ ] T001 Create project structure per implementation plan`
-- ✅ CORRECT: `- [ ] T005 [P] Implement authentication middleware in src/middleware/auth.py`
-- ✅ CORRECT: `- [ ] T012 [P] [US1] Create User model in src/models/user.py`
-- ✅ CORRECT: `- [ ] T014 [US1] Implement UserService in src/services/user_service.py`
-- ❌ WRONG: `- [ ] Create User model` (missing ID and Story label)
-- ❌ WRONG: `T001 [US1] Create model` (missing checkbox)
-- ❌ WRONG: `- [ ] [US1] Create User model` (missing Task ID)
-- ❌ WRONG: `- [ ] T001 [US1] Create model` (missing file path)
-
-### Task Organization
-
-1. **From User Stories (spec.md)** - PRIMARY ORGANIZATION:
-   - Each user story (P1, P2, P3...) gets its own phase
-   - Map all related components to their story:
-     - Models needed for that story
-     - Services needed for that story
-     - Endpoints/UI needed for that story
-     - If tests requested: Tests specific to that story
-   - Mark story dependencies (most stories should be independent)
-
-2. **From Contracts**:
-   - Map each contract/endpoint → to the user story it serves
-   - If tests requested: Each contract → contract test task [P] before implementation in that story's phase
-
-3. **From Data Model**:
-   - Map each entity to the user story(ies) that need it
-   - If entity serves multiple stories: Put in earliest story or Setup phase
-   - Relationships → service layer tasks in appropriate story phase
-
-4. **From Setup/Infrastructure**:
-   - Shared infrastructure → Setup phase (Phase 1)
-   - Foundational/blocking tasks → Foundational phase (Phase 2)
-   - Story-specific setup → within that story's phase
+3. **Labels**: Add `parallel` label if task can run in parallel with others in same phase
 
 ### Phase Structure
 
-- **Phase 1**: Setup (project initialization)
-- **Phase 2**: Foundational (blocking prerequisites - MUST complete before user stories)
-- **Phase 3+**: User Stories in priority order (P1, P2, P3...)
-  - Within each story: Tests (if requested) → Models → Services → Endpoints → Integration
-  - Each phase should be a complete, independently testable increment
-- **Final Phase**: Polish & Cross-Cutting Concerns
+- **Phase 1: Setup**
+  - Project initialization
+  - Dependency installation
+  - Configuration files
+  - No [Story] label
+
+- **Phase 2: Foundational**
+  - Shared infrastructure
+  - Base models/types
+  - Core utilities
+  - No [Story] label
+
+- **Phase 3+: User Stories**
+  - One phase per user story from spec
+  - Each phase independently testable
+  - Include [US#] in issue labels
+
+- **Final Phase: Polish**
+  - Documentation
+  - Performance optimization
+  - Cross-cutting concerns
+
+## CI Mode Behavior
+
+When triggered by `ai:tasks` label on Project via webhook:
+
+1. Parse webhook payload for Project ID
+2. Load project, Plan Issue, and artifact comments
+3. Verify Plan Issue is complete
+4. Generate milestones and issues
+5. Create blocking relations
+6. Post summary comment
+7. Remove `ai:tasks` label from Project
+8. Exit with success
+
+## Linear API Reference
+
+### Get Project with Issues
+```graphql
+query GetProject($id: String!) {
+  project(id: $id) {
+    id
+    name
+    identifier
+    content
+    url
+    teams { nodes { id key } }
+    projectMilestones { nodes { id name sortOrder } }
+    issues {
+      nodes {
+        id
+        identifier
+        title
+        description
+        state { name }
+        comments { nodes { id body createdAt } }
+      }
+    }
+  }
+}
+```
+
+### Create Milestone
+```graphql
+mutation CreateMilestone($input: ProjectMilestoneCreateInput!) {
+  projectMilestoneCreate(input: $input) {
+    projectMilestone { id name sortOrder }
+    success
+  }
+}
+```
+
+### Create Issue
+```graphql
+mutation CreateIssue($input: IssueCreateInput!) {
+  issueCreate(input: $input) {
+    issue { id identifier title }
+    success
+  }
+}
+```
+
+### Create Blocking Relation
+```graphql
+mutation CreateBlockingRelation($input: IssueRelationCreateInput!) {
+  issueRelationCreate(input: $input) {
+    issueRelation { id type }
+    success
+  }
+}
+```
+
+### Add Comment
+```graphql
+mutation AddComment($input: CommentCreateInput!) {
+  commentCreate(input: $input) {
+    comment { id body }
+    success
+  }
+}
+```
+
+## Key Rules
+
+- Tasks are Linear Issues, not files
+- Phases are Linear Milestones
+- All blocking relations are explicit via Issue Relations
+- Each Issue must be independently executable by an agent
+- Include file paths and acceptance criteria in every Issue description

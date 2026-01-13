@@ -1,0 +1,84 @@
+# ABOUTME: Woodpecker CI job for retrying a failed implementation
+# Triggered when ai:retry label is present on an Issue (after first failure)
+
+when:
+  - event: custom
+    # Triggered by Linear webhook when ai:retry label is added to an Issue
+
+steps:
+  checkout:
+    image: alpine/git:latest
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      # Clone the repository
+      - git clone https://${GITHUB_TOKEN}@github.com/${CI_REPO}.git /workspace
+      - cd /workspace && git checkout main && git pull origin main
+
+      # Check if branch already exists and switch to it
+      - export ISSUE_ID=$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.data.identifier // empty')
+      - |
+        BRANCH_NAME=$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.data.branchName // empty')
+        if [ -n "$BRANCH_NAME" ]; then
+          git fetch origin $BRANCH_NAME || true
+          git checkout $BRANCH_NAME || git checkout -b $BRANCH_NAME
+        fi
+
+  retry-implement:
+    image: anthropic/claude-code:latest
+    environment:
+      LINEAR_TOKEN:
+        from_secret: linear_token
+      ANTHROPIC_API_KEY:
+        from_secret: anthropic_api_key
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - cd /workspace
+
+      # Parse webhook payload for Issue ID/identifier
+      - export ISSUE_ID=$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.data.id // .issueId // empty')
+      - export ISSUE_IDENTIFIER=$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.data.identifier // empty')
+      - export ISSUE_REF=${ISSUE_IDENTIFIER:-$ISSUE_ID}
+
+      # Configure git for commits
+      - git config user.name "Claude Code Bot"
+      - git config user.email "claude-bot@example.com"
+
+      # Run the retry implementation command with context about previous failure
+      - |
+        claude --dangerously-skip-permissions \
+          "/speckit.implement $ISSUE_REF --retry" \
+          --output-format json > /tmp/retry-result.json 2>&1 || true
+
+      # Check result - on retry failure, mark as blocked
+      - |
+        if grep -q '"status": "success"' /tmp/retry-result.json; then
+          echo "Retry successful - PR created/updated"
+          cat /tmp/retry-result.json | jq '.pr_url // .summary // .'
+          # Remove ai:retry label (handled by implement command)
+          exit 0
+        else
+          echo "Retry also failed - marking as blocked"
+          cat /tmp/retry-result.json
+          # The implement command should have added ai:blocked label
+          exit 0
+        fi
+
+  notify-blocked:
+    image: curlimages/curl:latest
+    when:
+      - status: failure
+    environment:
+      LINEAR_TOKEN:
+        from_secret: linear_token
+    commands:
+      - export ISSUE_ID=$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.data.id // .issueId // empty')
+      - |
+        curl -X POST https://api.linear.app/graphql \
+          -H "Authorization: $LINEAR_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"query\": \"mutation { commentCreate(input: { issueId: \\\"$ISSUE_ID\\\", body: \\\"CI: Retry job failed. Human intervention required.\\\" }) { comment { id } } }\"
+          }"

@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Linear Configuration",
+  "description": "Configuration for Linear integration with spec-kit",
+  "type": "object",
+  "required": ["teamId", "labels", "states"],
+  "properties": {
+    "teamId": {
+      "type": "string",
+      "description": "UUID of the Linear team to use for issues",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "labels": {
+      "type": "object",
+      "description": "Mapping of label names to their UUIDs",
+      "properties": {
+        "ai:plan": {
+          "type": "string",
+          "description": "Label added to project when ready for planning phase"
+        },
+        "ai:tasks": {
+          "type": "string",
+          "description": "Label added to project when plan is approved and tasks should be generated"
+        },
+        "ai:ready": {
+          "type": "string",
+          "description": "Label added to issue when it's ready to be worked on"
+        },
+        "ai:in-progress": {
+          "type": "string",
+          "description": "Label added by agent when actively working on an issue"
+        },
+        "ai:retry": {
+          "type": "string",
+          "description": "Label added by agent on first failure to trigger retry"
+        },
+        "ai:blocked": {
+          "type": "string",
+          "description": "Label added by agent when blocked and needs human intervention"
+        },
+        "ai:needs-input": {
+          "type": "string",
+          "description": "Label added by agent when it has specific questions"
+        },
+        "ai:review": {
+          "type": "string",
+          "description": "Label added by agent when PR is created and awaiting review"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "states": {
+      "type": "object",
+      "description": "Mapping of workflow state names to their UUIDs",
+      "properties": {
+        "backlog": {
+          "type": "string",
+          "description": "Backlog state ID"
+        },
+        "todo": {
+          "type": "string",
+          "description": "Todo state ID"
+        },
+        "inProgress": {
+          "type": "string",
+          "description": "In Progress state ID"
+        },
+        "inReview": {
+          "type": "string",
+          "description": "In Review state ID"
+        },
+        "done": {
+          "type": "string",
+          "description": "Done state ID"
+        },
+        "canceled": {
+          "type": "string",
+          "description": "Canceled state ID"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "projectStatuses": {
+      "type": "object",
+      "description": "Mapping of project status names to their UUIDs",
+      "properties": {
+        "planned": {
+          "type": "string",
+          "description": "Planned project status ID"
+        },
+        "started": {
+          "type": "string",
+          "description": "Started project status ID"
+        },
+        "completed": {
+          "type": "string",
+          "description": "Completed project status ID"
+        },
+        "canceled": {
+          "type": "string",
+          "description": "Canceled project status ID"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  }
+}

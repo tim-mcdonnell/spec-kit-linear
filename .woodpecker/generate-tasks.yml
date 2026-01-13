@@ -1,0 +1,63 @@
+# ABOUTME: Woodpecker CI job for task generation phase
+# Triggered when ai:tasks label is added to a Linear Project
+
+when:
+  - event: custom
+    # Triggered by Linear webhook when ai:tasks label is added to a Project
+
+steps:
+  generate-tasks:
+    image: anthropic/claude-code:latest
+    environment:
+      LINEAR_TOKEN:
+        from_secret: linear_token
+      ANTHROPIC_API_KEY:
+        from_secret: anthropic_api_key
+    commands:
+      # Parse webhook payload for Project ID
+      - export PROJECT_ID=$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.data.id // .projectId // empty')
+
+      # Validate Project ID was extracted
+      - |
+        if [ -z "$PROJECT_ID" ]; then
+          echo "Error: Could not extract Project ID from webhook payload"
+          exit 1
+        fi
+
+      # Run the task generation command
+      - |
+        claude --dangerously-skip-permissions \
+          "/speckit.tasks $PROJECT_ID" \
+          --output-format json > /tmp/tasks-result.json 2>&1 || true
+
+      # Check result and handle accordingly
+      - |
+        if grep -q '"status": "needs_input"' /tmp/tasks-result.json; then
+          echo "Task generation requires human input - ai:needs-input label added"
+          exit 0
+        elif grep -q '"status": "success"' /tmp/tasks-result.json; then
+          echo "Tasks generated successfully"
+          cat /tmp/tasks-result.json | jq '.summary // .'
+          exit 0
+        else
+          echo "Task generation failed - check Plan Issue comments for details"
+          cat /tmp/tasks-result.json
+          exit 1
+        fi
+
+  notify-failure:
+    image: curlimages/curl:latest
+    when:
+      - status: failure
+    environment:
+      LINEAR_TOKEN:
+        from_secret: linear_token
+    commands:
+      - export PROJECT_ID=$(echo "$CI_CUSTOM_PAYLOAD" | jq -r '.data.id // .projectId // empty')
+      - |
+        curl -X POST https://api.linear.app/graphql \
+          -H "Authorization: $LINEAR_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"query\": \"mutation { commentCreate(input: { issueId: \\\"$PROJECT_ID\\\", body: \\\"CI: Task generation job failed. Check Woodpecker logs for details.\\\" }) { comment { id } } }\"
+          }"

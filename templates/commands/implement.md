@@ -1,8 +1,5 @@
 ---
-description: Execute the implementation plan by processing and executing all tasks defined in tasks.md
-scripts:
-  sh: scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
-  ps: scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks
+description: Implement a Linear Issue by creating a branch, writing code, and creating a PR. Triggered by `ai:ready` label in CI or manually.
 ---
 
 ## User Input
@@ -11,128 +8,375 @@ scripts:
 $ARGUMENTS
 ```
 
-You **MUST** consider the user input before proceeding (if not empty).
+You **MUST** consider the user input before proceeding (if not empty). The input should include the Issue identifier (e.g., "TIM-123").
 
 ## Outline
 
-1. Run `{SCRIPT}` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+This command implements a single Linear Issue by:
+1. Checking blockers
+2. Creating a feature branch
+3. Writing code and tests
+4. Creating a Pull Request
+5. Updating the Issue status
 
-2. **Check checklists status** (if FEATURE_DIR/checklists/ exists):
-   - Scan all checklist files in the checklists/ directory
-   - For each checklist, count:
-     - Total items: All lines matching `- [ ]` or `- [X]` or `- [x]`
-     - Completed items: Lines matching `- [X]` or `- [x]`
-     - Incomplete items: Lines matching `- [ ]`
-   - Create a status table:
+In CI mode, this is triggered when the `ai:ready` label is added to an Issue.
 
-     ```text
-     | Checklist | Total | Completed | Incomplete | Status |
-     |-----------|-------|-----------|------------|--------|
-     | ux.md     | 12    | 12        | 0          | ✓ PASS |
-     | test.md   | 8     | 5         | 3          | ✗ FAIL |
-     | security.md | 6   | 6         | 0          | ✓ PASS |
-     ```
+### Execution Steps
 
-   - Calculate overall status:
-     - **PASS**: All checklists have 0 incomplete items
-     - **FAIL**: One or more checklists have incomplete items
+1. **Load the Issue and context**:
 
-   - **If any checklist is incomplete**:
-     - Display the table with incomplete item counts
-     - **STOP** and ask: "Some checklists are incomplete. Do you want to proceed with implementation anyway? (yes/no)"
-     - Wait for user response before continuing
-     - If user says "no" or "wait" or "stop", halt execution
-     - If user says "yes" or "proceed" or "continue", proceed to step 3
+   ```graphql
+   query GetIssue($id: String!) {
+     issue(id: $id) {
+       id
+       identifier
+       title
+       description
+       priority
+       url
+       branchName
+       team { id key }
+       state { id name type }
+       project {
+         id
+         name
+         content
+       }
+       milestone { id name }
+       labels { nodes { id name } }
+       relations {
+         nodes {
+           type
+           relatedIssue {
+             id
+             identifier
+             title
+             state { name }
+           }
+         }
+       }
+     }
+   }
+   ```
 
-   - **If all checklists are complete**:
-     - Display the table showing all checklists passed
-     - Automatically proceed to step 3
+   - Parse Issue ID from input or CI webhook payload
+   - Load `linear-config.json` for state IDs
+   - Verify `LINEAR_TOKEN` and `GITHUB_TOKEN` are set
+   - Load Project content (spec) for context
+   - Find Plan Issue for additional context (artifact comments)
 
-3. Load and analyze the implementation context:
-   - **REQUIRED**: Read tasks.md for the complete task list and execution plan
-   - **REQUIRED**: Read plan.md for tech stack, architecture, and file structure
-   - **IF EXISTS**: Read data-model.md for entities and relationships
-   - **IF EXISTS**: Read contracts/ for API specifications and test requirements
-   - **IF EXISTS**: Read research.md for technical decisions and constraints
-   - **IF EXISTS**: Read quickstart.md for integration scenarios
+2. **Check blocking relations**:
 
-4. **Project Setup Verification**:
-   - **REQUIRED**: Create/verify ignore files based on actual project setup:
+   From the Issue's relations, check all "blocked by" relations:
 
-   **Detection & Creation Logic**:
-   - Check if the following command succeeds to determine if the repository is a git repo (create/verify .gitignore if so):
+   ```python
+   incomplete_blockers = []
+   for relation in issue.relations:
+       if relation.type == "blocked_by":
+           if relation.related_issue.state.name not in ["Done", "Completed", "Canceled"]:
+               incomplete_blockers.append(relation.related_issue.identifier)
+   ```
 
-     ```sh
-     git rev-parse --git-dir 2>/dev/null
-     ```
+   - If blockers are incomplete:
+     - Post comment: "Blocked by: TIM-001, TIM-002 (not yet complete)"
+     - Add `ai:blocked` label
+     - Exit
 
-   - Check if Dockerfile* exists or Docker in plan.md → create/verify .dockerignore
-   - Check if .eslintrc* exists → create/verify .eslintignore
-   - Check if eslint.config.* exists → ensure the config's `ignores` entries cover required patterns
-   - Check if .prettierrc* exists → create/verify .prettierignore
-   - Check if .npmrc or package.json exists → create/verify .npmignore (if publishing)
-   - Check if terraform files (*.tf) exist → create/verify .terraformignore
-   - Check if .helmignore needed (helm charts present) → create/verify .helmignore
+3. **Update Issue status to "In Progress"**:
 
-   **If ignore file already exists**: Verify it contains essential patterns, append missing critical patterns only
-   **If ignore file missing**: Create with full pattern set for detected technology
+   ```graphql
+   mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
+     issueUpdate(id: $id, input: $input) {
+       issue { id state { name } }
+       success
+     }
+   }
+   ```
 
-   **Common Patterns by Technology** (from plan.md tech stack):
-   - **Node.js/JavaScript/TypeScript**: `node_modules/`, `dist/`, `build/`, `*.log`, `.env*`
-   - **Python**: `__pycache__/`, `*.pyc`, `.venv/`, `venv/`, `dist/`, `*.egg-info/`
-   - **Java**: `target/`, `*.class`, `*.jar`, `.gradle/`, `build/`
-   - **C#/.NET**: `bin/`, `obj/`, `*.user`, `*.suo`, `packages/`
-   - **Go**: `*.exe`, `*.test`, `vendor/`, `*.out`
-   - **Ruby**: `.bundle/`, `log/`, `tmp/`, `*.gem`, `vendor/bundle/`
-   - **PHP**: `vendor/`, `*.log`, `*.cache`, `*.env`
-   - **Rust**: `target/`, `debug/`, `release/`, `*.rs.bk`, `*.rlib`, `*.prof*`, `.idea/`, `*.log`, `.env*`
-   - **Kotlin**: `build/`, `out/`, `.gradle/`, `.idea/`, `*.class`, `*.jar`, `*.iml`, `*.log`, `.env*`
-   - **C++**: `build/`, `bin/`, `obj/`, `out/`, `*.o`, `*.so`, `*.a`, `*.exe`, `*.dll`, `.idea/`, `*.log`, `.env*`
-   - **C**: `build/`, `bin/`, `obj/`, `out/`, `*.o`, `*.a`, `*.so`, `*.exe`, `Makefile`, `config.log`, `.idea/`, `*.log`, `.env*`
-   - **Swift**: `.build/`, `DerivedData/`, `*.swiftpm/`, `Packages/`
-   - **R**: `.Rproj.user/`, `.Rhistory`, `.RData`, `.Ruserdata`, `*.Rproj`, `packrat/`, `renv/`
-   - **Universal**: `.DS_Store`, `Thumbs.db`, `*.tmp`, `*.swp`, `.vscode/`, `.idea/`
+   - Update state to "In Progress" (using state ID from config)
+   - Add `ai:in-progress` label
+   - Remove `ai:ready` label
 
-   **Tool-Specific Patterns**:
-   - **Docker**: `node_modules/`, `.git/`, `Dockerfile*`, `.dockerignore`, `*.log*`, `.env*`, `coverage/`
-   - **ESLint**: `node_modules/`, `dist/`, `build/`, `coverage/`, `*.min.js`
-   - **Prettier**: `node_modules/`, `dist/`, `build/`, `coverage/`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`
-   - **Terraform**: `.terraform/`, `*.tfstate*`, `*.tfvars`, `.terraform.lock.hcl`
-   - **Kubernetes/k8s**: `*.secret.yaml`, `secrets/`, `.kube/`, `kubeconfig*`, `*.key`, `*.crt`
+4. **Create feature branch**:
 
-5. Parse tasks.md structure and extract:
-   - **Task phases**: Setup, Tests, Core, Integration, Polish
-   - **Task dependencies**: Sequential vs parallel execution rules
-   - **Task details**: ID, description, file paths, parallel markers [P]
-   - **Execution flow**: Order and dependency requirements
+   Branch naming convention:
+   ```
+   issue-{identifier}-{short-title}
+   ```
 
-6. Execute implementation following the task plan:
-   - **Phase-by-phase execution**: Complete each phase before moving to the next
-   - **Respect dependencies**: Run sequential tasks in order, parallel tasks [P] can run together  
-   - **Follow TDD approach**: Execute test tasks before their corresponding implementation tasks
-   - **File-based coordination**: Tasks affecting the same files must run sequentially
-   - **Validation checkpoints**: Verify each phase completion before proceeding
+   Example: `issue-TIM-123-user-authentication`
 
-7. Implementation execution rules:
-   - **Setup first**: Initialize project structure, dependencies, configuration
-   - **Tests before code**: If you need to write tests for contracts, entities, and integration scenarios
-   - **Core development**: Implement models, services, CLI commands, endpoints
-   - **Integration work**: Database connections, middleware, logging, external services
-   - **Polish and validation**: Unit tests, performance optimization, documentation
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b issue-TIM-123-user-authentication
+   ```
 
-8. Progress tracking and error handling:
-   - Report progress after each completed task
-   - Halt execution if any non-parallel task fails
-   - For parallel tasks [P], continue with successful tasks, report failed ones
-   - Provide clear error messages with context for debugging
-   - Suggest next steps if implementation cannot proceed
-   - **IMPORTANT** For completed tasks, make sure to mark the task off as [X] in the tasks file.
+5. **Parse task requirements** from Issue description:
 
-9. Completion validation:
-   - Verify all required tasks are completed
-   - Check that implemented features match the original specification
-   - Validate that tests pass and coverage meets requirements
-   - Confirm the implementation follows the technical plan
-   - Report final status with summary of completed work
+   Extract from the Issue description:
+   - **Objective**: What to accomplish
+   - **Files**: What to create/modify
+   - **Requirements**: Specific implementation details
+   - **Acceptance Criteria**: What must be true when done
 
-Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/speckit.tasks` first to regenerate the task list.
+   Also load context from:
+   - Project content (spec)
+   - Plan Issue comments (data model, API contracts)
+   - Related issues (for patterns/consistency)
+
+6. **Execute implementation**:
+
+   For each file in the task:
+   - Follow TDD if tests are required:
+     1. Write failing test
+     2. Run test to confirm failure
+     3. Write minimal code to pass
+     4. Run test to confirm pass
+   - Otherwise:
+     1. Write implementation
+     2. Run linting/type checks
+     3. Run existing tests
+
+   **Commit incrementally** with meaningful messages:
+   ```bash
+   git add <specific-files>
+   git commit -m "Fixes TIM-123: <description of change>"
+   ```
+
+7. **Run validation**:
+
+   - Run project's test suite
+   - Run linting
+   - Run type checking (if applicable)
+
+   **If validation fails**:
+   - First failure: Add `ai:retry` label, post error as comment, exit
+   - On retry (if `ai:retry` label was present):
+     - Attempt to fix the issue
+     - If still failing: Add `ai:blocked` label, post full error context, exit
+
+8. **Push branch and create PR**:
+
+   ```bash
+   git push -u origin issue-TIM-123-user-authentication
+   ```
+
+   Create PR using GitHub CLI or API:
+   ```bash
+   gh pr create --title "TIM-123: [Task Title]" --body "$(cat <<'EOF'
+   ## Summary
+   [Brief description of changes]
+
+   ## Changes
+   - [List of changes]
+
+   ## Testing
+   - [How this was tested]
+
+   ## Linear Issue
+   Fixes TIM-123
+
+   ## Checklist
+   - [ ] Tests pass
+   - [ ] Code follows project conventions
+   - [ ] Documentation updated (if needed)
+   EOF
+   )"
+   ```
+
+9. **Update Issue in Linear**:
+
+   ```graphql
+   mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
+     issueUpdate(id: $id, input: $input) {
+       issue { id state { name } }
+       success
+     }
+   }
+   ```
+
+   - Update state to "In Review"
+   - Add `ai:review` label
+   - Remove `ai:in-progress` label
+
+   Post comment with PR link:
+   ```graphql
+   mutation AddComment($input: CommentCreateInput!) {
+     commentCreate(input: $input) {
+       comment { id }
+       success
+     }
+   }
+   ```
+
+10. **Report completion**:
+    - PR URL
+    - Branch name
+    - Summary of changes
+    - Files modified
+    - Tests added/modified
+    - Issue updated status
+
+## Error Handling
+
+### First Failure (ai:retry)
+
+When tests/linting fails on first attempt:
+
+1. Add `ai:retry` label to Issue
+2. Post comment with error details:
+   ```markdown
+   ## Implementation Failed - Retry Scheduled
+
+   **Error Type**: [Test failure / Lint error / Type error]
+
+   **Details**:
+   ```
+   [Error output]
+   ```
+
+   **Next Steps**: CI will retry this issue automatically.
+   ```
+3. Exit with retry status
+
+### Retry Also Fails (ai:blocked)
+
+When retry attempt also fails:
+
+1. Remove `ai:retry` label
+2. Add `ai:blocked` label
+3. Post detailed comment:
+   ```markdown
+   ## Implementation Blocked - Human Review Needed
+
+   **Attempts**: 2
+
+   **Error Summary**:
+   [Concise error description]
+
+   **Full Error Output**:
+   ```
+   [Complete error logs]
+   ```
+
+   **Suggested Fixes**:
+   - [Possible solution 1]
+   - [Possible solution 2]
+
+   **Files Changed**:
+   - [List of files with partial changes]
+
+   Please review and either:
+   1. Manually fix the issue and remove `ai:blocked` label
+   2. Update the task description with more context
+   3. Split this task into smaller pieces
+   ```
+4. Exit with blocked status
+
+## CI Mode Behavior
+
+When triggered by `ai:ready` label on Issue via webhook:
+
+1. Parse webhook payload for Issue ID
+2. Load issue and check blockers
+3. If blocked → add `ai:blocked` label, exit
+4. Update status to "In Progress"
+5. Create branch and implement
+6. If tests fail:
+   - First try → add `ai:retry`, exit (CI will retry)
+   - Retry → add `ai:blocked`, exit
+7. Push branch, create PR
+8. Update status to "In Review"
+9. Exit with success
+
+### Retry Behavior
+
+When triggered by `ai:retry` label:
+
+1. Load previous state from Issue comments
+2. Attempt to fix the identified issues
+3. Re-run validation
+4. If still failing → `ai:blocked`
+5. If passing → create/update PR, update status
+
+## Linear API Reference
+
+### Get Issue with Full Context
+```graphql
+query GetIssue($id: String!) {
+  issue(id: $id) {
+    id
+    identifier
+    title
+    description
+    priority
+    url
+    branchName
+    team { id key }
+    state { id name type }
+    project {
+      id
+      name
+      content
+    }
+    milestone { id name }
+    labels { nodes { id name } }
+    relations {
+      nodes {
+        type
+        relatedIssue {
+          id
+          identifier
+          title
+          state { name }
+        }
+      }
+    }
+  }
+}
+```
+
+### Update Issue
+```graphql
+mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
+  issueUpdate(id: $id, input: $input) {
+    issue { id state { name } labels { nodes { name } } }
+    success
+  }
+}
+```
+
+### Add Comment
+```graphql
+mutation AddComment($input: CommentCreateInput!) {
+  commentCreate(input: $input) {
+    comment { id body }
+    success
+  }
+}
+```
+
+### Get Issue Comments (for retry context)
+```graphql
+query GetIssueComments($id: String!) {
+  issue(id: $id) {
+    comments {
+      nodes {
+        id
+        body
+        createdAt
+      }
+    }
+  }
+}
+```
+
+## Key Rules
+
+- Check blockers before starting work
+- Use Linear's branch name suggestion when available
+- Commit with "Fixes TIM-XXX" to enable auto-linking
+- Update Issue status at each phase transition
+- First failure triggers retry, second failure requires human intervention
+- All errors are logged as Issue comments for traceability
